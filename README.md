@@ -2,6 +2,8 @@
 
 A lightweight web application for keeping a household's recipes in one shared place.
 
+This application's main purpose is for me to finally try vibe coding. Its secondary purpose is to fulfill the goals stated below.
+
 ## Goals
 
 - **Shared vault.** Every recipe is visible to every user, and any user can edit any recipe. Everyone sees the same changes.
