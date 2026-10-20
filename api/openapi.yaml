@@ -1,0 +1,31 @@
+openapi: 3.0.3
+info:
+  title: Family Cookbook API
+  version: 0.1.0
+  description: |
+    Contract between the Go backend and the React frontend.
+    Backend tests validate real responses against this file, and the frontend
+    generates its TypeScript types from it. Change this file first.
+servers:
+  - url: /api
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness check
+      responses:
+        "200":
+          description: The service is up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+components:
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]

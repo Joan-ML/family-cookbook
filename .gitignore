@@ -1,0 +1,10 @@
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Local Claude Code settings
+.claude/settings.local.json
+
+# Local runtime data (SQLite file, photos)
+/data/
