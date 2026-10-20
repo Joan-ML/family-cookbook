@@ -41,7 +41,7 @@ family-cookbook/
 │   └── src/
 │       ├── api/       # typed client + types generated from the contract
 │       └── mocks/     # MSW handlers for tests and mock dev mode
-├── Makefile
+├── .github/workflows/ # CI, one workflow per package
 └── README.md
 ```
 
@@ -52,7 +52,7 @@ Shipping as one image is a deployment choice. In development, the backend and fr
 1. **Change the contract first.** Every new or changed endpoint starts as an edit to `api/openapi.yaml`.
 2. **The backend is tested against it.** API tests send real requests through the handlers and validate both request and response against the spec (via `kin-openapi`). A response that doesn't match the contract, or a request to an undocumented route, fails the test.
 3. **The frontend is built against it.** TypeScript types are generated from the spec (`openapi-typescript`) and used by a typed client (`openapi-fetch`). [MSW](https://mswjs.io) mocks the API, with mock bodies typed from the same schema, both in unit tests and in the browser (`npm run dev:mock`). Frontend work never needs a running backend.
-4. **CI keeps them in sync.** `make check-api` fails if the generated types are stale.
+4. **CI keeps them in sync.** Each package has its own GitHub Actions workflow that runs only when that package or `api/` changes, so a contract change must pass on both sides. The frontend workflow also fails if the generated types are stale (`npm run check:api`).
 
 ### Backend: Go
 
@@ -84,17 +84,25 @@ Since everything is shared, accounts exist only to keep strangers out and to rec
 
 ### Development
 
-Requirements: Go 1.26+, Node.js 22+.
+Each package is self-contained and uses its own tools.
+
+**Backend** (Go 1.26+), from `backend/`:
 
 ```sh
-cd frontend && npm install   # once
+go run ./cmd/server   # API on :8080
+go test ./...         # tests, including contract validation
+```
 
-make dev-backend    # Go API on :8080
-make dev-frontend   # Vite on :5173, passes /api requests through to :8080
-make dev-mock       # Vite with the API mocked by MSW; no backend needed
+**Frontend** (Node.js 22+), from `frontend/`:
 
-make test           # backend tests, frontend lint + tests, contract check
-make gen-api        # regenerate frontend types after editing api/openapi.yaml
+```sh
+npm install           # once
+npm run dev           # Vite on :5173, passes /api requests through to :8080
+npm run dev:mock      # API mocked by MSW; no backend needed
+npm test              # unit tests
+npm run lint
+npm run gen:api       # regenerate types after editing api/openapi.yaml
+npm run check:api     # fail if generated types are stale
 ```
 
 Local data (the SQLite file and photos) lives in `data/`, which git ignores.

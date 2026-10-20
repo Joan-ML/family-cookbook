@@ -11,7 +11,8 @@
     "dev:mock": "vite --mode mock",
     "test": "vitest run",
     "test:watch": "vitest",
-    "gen:api": "openapi-typescript ../api/openapi.yaml -o src/api/schema.d.ts"
+    "gen:api": "openapi-typescript ../api/openapi.yaml -o src/api/schema.d.ts",
+    "check:api": "npm run gen:api && git diff --exit-code -- src/api/schema.d.ts"
   },
   "dependencies": {
     "openapi-fetch": "^0.17.0",
