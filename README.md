@@ -50,7 +50,7 @@ family-cookbook/
 Shipping as one image is a deployment choice. In development, the backend and frontend can move forward independently, and `api/openapi.yaml` is the contract between them:
 
 1. **Change the contract first.** Every new or changed endpoint starts as an edit to `api/openapi.yaml`.
-2. **The backend is tested against it.** API tests send real requests through the handlers and validate both request and response against the spec (via `kin-openapi`). A response that doesn't match the contract, or a request to an undocumented route, fails the test.
+2. **The backend is generated from it and tested against it.** Go types and the server interface are generated from the spec with [`oapi-codegen`](https://github.com/oapi-codegen/oapi-codegen), so a handler that returns the wrong shape fails to compile. API tests also send real requests through the handlers and validate both request and response against the spec (via `kin-openapi`), catching what types can't, such as status codes, enum values and required fields. A request to an undocumented route also fails.
 3. **The frontend is built against it.** TypeScript types are generated from the spec (`openapi-typescript`) and used by a typed client (`openapi-fetch`). [MSW](https://mswjs.io) mocks the API, with mock bodies typed from the same schema, both in unit tests and in the browser (`npm run dev:mock`). Frontend work never needs a running backend.
 4. **CI keeps them in sync.** Each package has its own GitHub Actions workflow that runs only when that package or `api/` changes, so a contract change must pass on both sides. The frontend workflow also fails if the generated types are stale (`npm run check:api`).
 
@@ -81,6 +81,15 @@ The storage layer sits behind a small Go interface, so switching to another data
 ### Users and access
 
 Since everything is shared, accounts exist only to keep strangers out and to record who last edited a recipe. Users log in with a username and password and stay logged in through session cookies. There are no roles.
+
+Recipes are built first and authentication second, but the app is designed for authentication from the start, so adding it later is a contained change:
+
+- **Contract:** the spec declares a cookie-based security scheme that applies to every endpoint by default, and each endpoint documents a `401` response.
+- **Backend:** every route goes through authentication middleware. Until login exists, the middleware attaches a fixed development user, and handlers always read the current user from the request.
+- **Data:** recipes record `createdBy` and `updatedBy` from the start.
+- **No deployment until authentication exists.**
+
+Open question: how accounts are created. The leading option is an admin command (e.g. `cookbook user add <name>`) with no public sign-up.
 
 ### Development
 
