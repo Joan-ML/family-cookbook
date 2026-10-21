@@ -1,23 +1,32 @@
-import { useEffect, useState } from 'react'
-import { api } from './api/client'
+import { Link, Route, Switch } from 'wouter'
+import { NotFound } from './pages/NotFound'
+import { RecipeFormPage } from './pages/RecipeFormPage'
+import { RecipeListPage } from './pages/RecipeListPage'
+import { RecipePage } from './pages/RecipePage'
 
-type Status = 'checking' | 'ok' | 'unreachable'
-
+// Routes follow the browser's location by default; tests wrap App in a
+// <Router> with an in-memory location instead.
 function App() {
-  const [status, setStatus] = useState<Status>('checking')
-
-  useEffect(() => {
-    api
-      .GET('/health')
-      .then(({ data }) => setStatus(data?.status === 'ok' ? 'ok' : 'unreachable'))
-      .catch(() => setStatus('unreachable'))
-  }, [])
-
   return (
-    <main>
-      <h1>Family Cookbook</h1>
-      <p role="status">API: {status}</p>
-    </main>
+    <>
+      <header className="site-header">
+        <Link href="/" className="site-title">
+          Family Cookbook
+        </Link>
+        <p className="site-tagline">Our recipes, all in one place</p>
+      </header>
+      <main>
+        <Switch>
+          <Route path="/" component={RecipeListPage} />
+          <Route path="/new">{() => <RecipeFormPage />}</Route>
+          <Route path="/recipes/:id/edit">{(params) => <RecipeFormPage key={params.id} id={params.id} />}</Route>
+          <Route path="/recipes/:id">{(params) => <RecipePage key={params.id} id={params.id} />}</Route>
+          <Route>
+            <NotFound />
+          </Route>
+        </Switch>
+      </main>
+    </>
   )
 }
 

@@ -1,0 +1,156 @@
+import { useState, type FormEvent } from 'react'
+import { Link, useLocation } from 'wouter'
+import type { Recipe, RecipeInput } from '../api/client'
+import { createRecipe, getRecipe, updateRecipe } from '../api/recipes'
+import { Loading, LoadError } from '../components'
+import { useLoad } from '../useLoad'
+import { NotFound } from './NotFound'
+
+/** Create a recipe, or edit one when `id` is given. */
+export function RecipeFormPage({ id }: { id?: string }) {
+  if (!id) return <RecipeForm />
+  return <EditRecipe id={id} />
+}
+
+function EditRecipe({ id }: { id: string }) {
+  const recipe = useLoad(() => getRecipe(id), id)
+
+  if (recipe.status === 'loading') return <Loading />
+  if (recipe.status === 'error') return <LoadError message={recipe.message} onRetry={recipe.reload} />
+  if (!recipe.data) return <NotFound what="recipe" />
+  return <RecipeForm recipe={recipe.data} />
+}
+
+// The form edits plain strings; ingredients are one per line and tags are
+// comma-separated. The server trims and drops empty entries.
+type Fields = {
+  name: string
+  ingredients: string
+  steps: string[]
+  tags: string
+  source: string
+}
+
+function toFields(r?: Recipe): Fields {
+  return {
+    name: r?.name ?? '',
+    ingredients: r?.ingredients.join('\n') ?? '',
+    steps: r?.steps.length ? r.steps : [''],
+    tags: r?.tags.join(', ') ?? '',
+    source: r?.source ?? '',
+  }
+}
+
+function toInput(f: Fields): RecipeInput {
+  return {
+    name: f.name,
+    ingredients: f.ingredients.split('\n'),
+    steps: f.steps,
+    tags: f.tags.split(','),
+    ...(f.source.trim() ? { source: f.source } : {}),
+  }
+}
+
+function RecipeForm({ recipe }: { recipe?: Recipe }) {
+  const [, navigate] = useLocation()
+  const [fields, setFields] = useState(() => toFields(recipe))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const set = (patch: Partial<Fields>) => setFields((f) => ({ ...f, ...patch }))
+  const setStep = (i: number, value: string) => set({ steps: fields.steps.map((s, j) => (j === i ? value : s)) })
+  const removeStep = (i: number) => set({ steps: fields.steps.filter((_, j) => j !== i) })
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError('')
+    try {
+      const saved = recipe ? await updateRecipe(recipe.id, toInput(fields)) : await createRecipe(toInput(fields))
+      navigate(`/recipes/${encodeURIComponent(saved.id)}`, { replace: true })
+    } catch (err) {
+      setError((err as Error).message)
+      setSaving(false)
+    }
+  }
+
+  const cancelHref = recipe ? `/recipes/${encodeURIComponent(recipe.id)}` : '/'
+
+  return (
+    <form className="recipe-form" onSubmit={onSubmit}>
+      <h1>{recipe ? 'Edit recipe' : 'New recipe'}</h1>
+
+      <label className="field">
+        <span>Name</span>
+        <input
+          value={fields.name}
+          onChange={(e) => set({ name: e.target.value })}
+          required
+          maxLength={200}
+          autoFocus={!recipe}
+        />
+      </label>
+
+      <label className="field">
+        <span>Ingredients</span>
+        <small className="muted">One per line, e.g. "200 g flour"</small>
+        <textarea rows={6} value={fields.ingredients} onChange={(e) => set({ ingredients: e.target.value })} />
+      </label>
+
+      <fieldset className="field">
+        <legend>Steps</legend>
+        <ol className="step-fields">
+          {fields.steps.map((step, i) => (
+            <li key={i}>
+              <textarea
+                rows={3}
+                aria-label={`Step ${i + 1}`}
+                value={step}
+                onChange={(e) => setStep(i, e.target.value)}
+              />
+              {fields.steps.length > 1 && (
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={`Remove step ${i + 1}`}
+                  onClick={() => removeStep(i)}
+                >
+                  ×
+                </button>
+              )}
+            </li>
+          ))}
+        </ol>
+        <button type="button" className="button" onClick={() => set({ steps: [...fields.steps, ''] })}>
+          Add step
+        </button>
+      </fieldset>
+
+      <label className="field">
+        <span>Tags</span>
+        <small className="muted">Separated by commas, e.g. "vegetarian, quick"</small>
+        <input value={fields.tags} onChange={(e) => set({ tags: e.target.value })} />
+      </label>
+
+      <label className="field">
+        <span>Source</span>
+        <small className="muted">Optional: a web address, a book, "Grandma"…</small>
+        <input value={fields.source} onChange={(e) => set({ source: e.target.value })} maxLength={500} />
+      </label>
+
+      {error && (
+        <p className="alert" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="actions">
+        <button type="submit" className="button primary" disabled={saving}>
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        <Link className="button" href={cancelHref}>
+          Cancel
+        </Link>
+      </div>
+    </form>
+  )
+}

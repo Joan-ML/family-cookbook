@@ -1,7 +1,57 @@
+/* Mobile-first: the base styles target phones; wider screens just get more
+   breathing room. Colours are tokens so dark mode only swaps values. */
+
 :root {
+  /* "Jade pebble morning" palette */
+  --sage: #7b9669;
+  --pebble: #e6e6e6;
+  --forest: #404e3b;
+  --slate: #6c8480;
+  --light-sage: #bac8b1;
+
+  --bg: var(--pebble);
+  --surface: #ffffff;
+  --text: #2c3529;
+  --muted: #566965; /* darker slate: slate itself is too light for small text */
+  --border: #d2d8ce;
+  --link: #536b46; /* darker sage, for the same reason */
+  --primary: var(--forest);
+  --primary-text: #ffffff;
+  --focus: var(--slate);
+  --tag-bg: var(--light-sage);
+  --tag-text: var(--forest);
+  --banner-bg: var(--forest);
+  --banner-text: #ffffff;
+  --banner-subtext: var(--light-sage);
+  --danger: #a33a2b;
+  --alert-bg: #f6e4e0;
+  --radius: 10px;
+  --tap: 44px; /* minimum touch target */
+
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   line-height: 1.5;
-  color-scheme: light dark;
+  color: var(--text);
+  background: var(--bg);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b2119;
+    --surface: #262e23;
+    --text: var(--pebble);
+    --muted: #a3b39b;
+    --border: #3a4535;
+    --link: var(--light-sage);
+    --primary: var(--sage);
+    --primary-text: #1b2119;
+    --tag-bg: var(--forest);
+    --tag-text: var(--light-sage);
+    --banner-bg: #2e3a2b;
+    --danger: #f0958a;
+    --alert-bg: #3b2420;
+    color-scheme: dark;
+  }
 }
 
 * {
@@ -10,10 +60,327 @@
 
 body {
   margin: 0;
+  background: var(--bg);
 }
 
 main {
   max-width: 40rem;
   margin: 0 auto;
-  padding: 1rem;
+  padding: 1rem 1rem 3rem;
+}
+
+h1 {
+  font-size: 1.6rem;
+  line-height: 1.2;
+  margin: 0.5rem 0 0.75rem;
+}
+
+h2 {
+  font-size: 1.15rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+a {
+  color: var(--link);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+/* Header: a dark band with the title centred, edged with a stripe of the
+   palette's colours */
+
+.site-header {
+  background: var(--banner-bg);
+  color: var(--banner-text);
+  text-align: center;
+  padding: 1.5rem 1rem 1.25rem;
+  border-bottom: 6px solid;
+  border-image: linear-gradient(
+      90deg,
+      var(--sage) 0 33.3%,
+      var(--light-sage) 33.3% 66.6%,
+      var(--slate) 66.6%
+    )
+    1;
+}
+
+.site-title {
+  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+  color: inherit;
+  text-decoration: none;
+}
+
+.site-tagline {
+  margin: 0.35rem 0 0;
+  color: var(--banner-subtext);
+  font-size: 0.95rem;
+}
+
+.site-header :focus-visible {
+  outline-color: var(--light-sage);
+}
+
+.page-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+/* Buttons and links that look like buttons */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap);
+  padding: 0 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.button.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-text);
+}
+
+.button.danger {
+  color: var(--danger);
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.link-button,
+.icon-button {
+  border: none;
+  background: none;
+  color: var(--link);
+  font: inherit;
+  cursor: pointer;
+}
+
+.icon-button {
+  min-width: var(--tap);
+  min-height: var(--tap);
+  font-size: 1.4rem;
+  color: var(--muted);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+/* List */
+
+.search,
+.field input,
+.field textarea {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.field textarea {
+  resize: vertical;
+  field-sizing: content; /* grow with the text where supported */
+  min-height: 5rem;
+}
+
+.active-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0;
+}
+
+.recipe-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--sage);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+}
+
+.card-link {
+  display: block;
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.card .tags {
+  margin-top: 0.35rem;
+}
+
+.empty {
+  text-align: center;
+  color: var(--muted);
+  margin-top: 2rem;
+}
+
+/* Tags */
+
+.tags {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.tag {
+  display: inline-block;
+  padding: 0.1rem 0.6rem;
+  border-radius: 999px;
+  background: var(--tag-bg);
+  color: var(--tag-text);
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+/* Recipe */
+
+.back {
+  display: inline-block;
+  margin-bottom: 0.5rem;
+  text-decoration: none;
+}
+
+.ingredients,
+.steps {
+  padding-left: 1.4rem;
+  margin: 0;
+}
+
+.ingredients li,
+.steps li {
+  margin-bottom: 0.4rem;
+}
+
+.steps li {
+  padding-left: 0.25rem;
+  margin-bottom: 0.9rem;
+}
+
+.meta {
+  margin-top: 2rem;
+  font-size: 0.85rem;
+}
+
+/* Form */
+
+.recipe-form {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.3rem;
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.field > span,
+.field > legend {
+  font-weight: 600;
+  padding: 0;
+}
+
+.field small {
+  font-size: 0.85rem;
+}
+
+.step-fields {
+  margin: 0.3rem 0 0.5rem;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+  display: grid;
+  gap: 0.5rem;
+}
+
+/* Flex rows lose the list's own numbers, so draw them with a counter. */
+.step-fields li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+  counter-increment: step;
+}
+
+.step-fields li::before {
+  content: counter(step) '.';
+  min-width: 1.4rem;
+  padding-top: 0.6rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.step-fields textarea {
+  flex: 1;
+}
+
+.alert {
+  background: var(--alert-bg);
+  color: var(--danger);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  margin: 1rem 0 0;
+}
+
+.alert p {
+  margin: 0 0 0.5rem;
+}
+
+@media (min-width: 40rem) {
+  h1 {
+    font-size: 2rem;
+  }
+
+  .site-header {
+    padding: 2.25rem 1rem 2rem;
+  }
+
+  .site-title {
+    font-size: 2.75rem;
+  }
 }
