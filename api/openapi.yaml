@@ -1,18 +1,27 @@
 openapi: 3.0.3
 info:
   title: Family Cookbook API
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Contract between the Go backend and the React frontend.
-    Backend tests validate real responses against this file, and the frontend
-    generates its TypeScript types from it. Change this file first.
+    Backend tests validate real responses against this file, and both sides
+    generate their types from it. Change this file first.
+
+    Conventions:
+    - Every endpoint requires a session cookie unless it declares `security: []`.
+    - Errors use the `Error` schema.
+    - Collections are returned as `{ "items": [...] }`, leaving room for
+      pagination fields later.
 servers:
   - url: /api
+security:
+  - sessionCookie: []
 paths:
   /health:
     get:
       operationId: getHealth
       summary: Liveness check
+      security: []
       responses:
         "200":
           description: The service is up.
@@ -20,7 +29,131 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Health"
+
+  /recipes:
+    get:
+      operationId: listRecipes
+      summary: List all recipes
+      responses:
+        "200":
+          description: All recipes, sorted by name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecipeList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createRecipe
+      summary: Create a recipe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecipeInput"
+      responses:
+        "201":
+          description: The created recipe.
+          headers:
+            Location:
+              description: URL of the new recipe.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recipe"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /recipes/{recipeId}:
+    parameters:
+      - $ref: "#/components/parameters/RecipeId"
+    get:
+      operationId: getRecipe
+      summary: Get a recipe
+      responses:
+        "200":
+          description: The recipe.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recipe"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateRecipe
+      summary: Replace a recipe's content
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecipeInput"
+      responses:
+        "200":
+          description: The updated recipe.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recipe"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteRecipe
+      summary: Delete a recipe
+      responses:
+        "204":
+          description: The recipe was deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
 components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
+
+  parameters:
+    RecipeId:
+      name: recipeId
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    BadRequest:
+      description: The request is malformed or fails validation.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Not logged in, or the session has expired.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: The resource does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
   schemas:
     Health:
       type: object
@@ -29,3 +162,97 @@ components:
         status:
           type: string
           enum: [ok]
+
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          description: Human-readable description of the problem.
+
+    RecipeInput:
+      description: The fields of a recipe that users edit.
+      type: object
+      required: [name, ingredients, steps, tags]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        ingredients:
+          description: One free-text line per ingredient, e.g. "200 g flour".
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 500
+        steps:
+          description: Cooking instructions, one entry per step, in order.
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 5000
+        tags:
+          description: |
+            Free-form tags, e.g. "vegetarian". The server trims and lowercases
+            them and removes duplicates.
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 50
+        source:
+          description: Where the recipe comes from, e.g. a URL, a book or "Grandma".
+          type: string
+          maxLength: 500
+
+    Recipe:
+      allOf:
+        - $ref: "#/components/schemas/RecipeInput"
+        - type: object
+          required: [id, createdAt, createdBy, updatedAt, updatedBy]
+          properties:
+            id:
+              type: string
+              readOnly: true
+            createdAt:
+              type: string
+              format: date-time
+              readOnly: true
+            createdBy:
+              description: Username of the user who created the recipe.
+              type: string
+              readOnly: true
+            updatedAt:
+              type: string
+              format: date-time
+              readOnly: true
+            updatedBy:
+              description: Username of the user who last edited the recipe.
+              type: string
+              readOnly: true
+
+    RecipeSummary:
+      description: The fields needed to show a recipe in a list.
+      type: object
+      required: [id, name, tags]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    RecipeList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecipeSummary"

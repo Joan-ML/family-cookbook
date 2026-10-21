@@ -21,6 +21,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/recipes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all recipes */
+        get: operations["listRecipes"];
+        put?: never;
+        /** Create a recipe */
+        post: operations["createRecipe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/recipes/{recipeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipeId: components["parameters"]["RecipeId"];
+            };
+            cookie?: never;
+        };
+        /** Get a recipe */
+        get: operations["getRecipe"];
+        /** Replace a recipe's content */
+        put: operations["updateRecipe"];
+        post?: never;
+        /** Delete a recipe */
+        delete: operations["deleteRecipe"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -29,9 +68,78 @@ export interface components {
             /** @enum {string} */
             status: "ok";
         };
+        Error: {
+            /** @description Human-readable description of the problem. */
+            message: string;
+        };
+        /** @description The fields of a recipe that users edit. */
+        RecipeInput: {
+            name: string;
+            /** @description One free-text line per ingredient, e.g. "200 g flour". */
+            ingredients: string[];
+            /** @description Cooking instructions, one entry per step, in order. */
+            steps: string[];
+            /**
+             * @description Free-form tags, e.g. "vegetarian". The server trims and lowercases
+             *     them and removes duplicates.
+             */
+            tags: string[];
+            /** @description Where the recipe comes from, e.g. a URL, a book or "Grandma". */
+            source?: string;
+        };
+        Recipe: components["schemas"]["RecipeInput"] & {
+            readonly id: string;
+            /** Format: date-time */
+            readonly createdAt: string;
+            /** @description Username of the user who created the recipe. */
+            readonly createdBy: string;
+            /** Format: date-time */
+            readonly updatedAt: string;
+            /** @description Username of the user who last edited the recipe. */
+            readonly updatedBy: string;
+        };
+        /** @description The fields needed to show a recipe in a list. */
+        RecipeSummary: {
+            id: string;
+            name: string;
+            tags: string[];
+        };
+        RecipeList: {
+            items: components["schemas"]["RecipeSummary"][];
+        };
     };
-    responses: never;
-    parameters: never;
+    responses: {
+        /** @description The request is malformed or fails validation. */
+        BadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Not logged in, or the session has expired. */
+        Unauthorized: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The resource does not exist. */
+        NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+    };
+    parameters: {
+        RecipeId: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -56,6 +164,130 @@ export interface operations {
                     "application/json": components["schemas"]["Health"];
                 };
             };
+        };
+    };
+    listRecipes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All recipes, sorted by name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecipeList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createRecipe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecipeInput"];
+            };
+        };
+        responses: {
+            /** @description The created recipe. */
+            201: {
+                headers: {
+                    /** @description URL of the new recipe. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Recipe"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getRecipe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipeId: components["parameters"]["RecipeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The recipe. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Recipe"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateRecipe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipeId: components["parameters"]["RecipeId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecipeInput"];
+            };
+        };
+        responses: {
+            /** @description The updated recipe. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Recipe"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteRecipe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipeId: components["parameters"]["RecipeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The recipe was deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
 }
