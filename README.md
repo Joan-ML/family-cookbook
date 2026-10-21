@@ -101,6 +101,48 @@ cookbook user list
 cookbook user remove <username>
 ```
 
+### Running locally
+
+Requirements: Go 1.26+ and Node.js 22+. There is no recipe UI yet: the web page only shows whether it can reach the API, so try recipes through the API directly.
+
+1. **Start the backend** (terminal 1). It creates `backend/data/cookbook.db` on first run.
+
+   ```sh
+   cd backend
+   go run ./cmd/server
+   ```
+
+2. **Start the frontend** (terminal 2), then open <http://localhost:5173>. It should show `API: ok`.
+
+   ```sh
+   cd frontend
+   npm install   # first time only
+   npm run dev
+   ```
+
+3. **Try the API** with curl (below), or import `api/openapi.yaml` into Bruno, Postman or a similar client, using `http://localhost:8080/api` as the base URL. Every request runs as the user `dev` until login exists.
+
+   ```sh
+   API=http://localhost:8080/api
+
+   curl -i -X POST $API/recipes -H 'Content-Type: application/json' -d '{
+     "name": "Pancakes",
+     "ingredients": ["200 g flour", "2 eggs", "300 ml milk"],
+     "steps": ["Whisk everything together.", "Fry in a hot pan."],
+     "tags": ["Breakfast", "vegetarian"],
+     "source": "Grandma"
+   }'                                   # 201; the Location header has the new recipe's URL
+
+   curl $API/recipes                    # list
+   curl $API/recipes/<id>               # get one
+   curl -X PUT $API/recipes/<id> -H 'Content-Type: application/json' -d '{...}'  # replace
+   curl -X DELETE $API/recipes/<id>     # delete
+   ```
+
+To start over with an empty database, stop the backend and delete `backend/data/`.
+
+To work on the frontend without the backend, run `npm run dev:mock` instead of step 1 and 2. The API is then mocked in the browser, with two sample recipes that reset on page reload.
+
 ### Development
 
 Each package is self-contained and uses its own tools.

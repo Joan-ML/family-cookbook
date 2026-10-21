@@ -6,5 +6,5 @@
 # Local Claude Code settings
 .claude/settings.local.json
 
-# Local runtime data (SQLite file, photos)
-/data/
+# Local runtime data (SQLite file, photos), e.g. backend/data/
+data/
