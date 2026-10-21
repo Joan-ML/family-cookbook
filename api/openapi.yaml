@@ -68,6 +68,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
 
   /recipes/{recipeId}:
     parameters:
@@ -108,6 +110,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
     delete:
       operationId: deleteRecipe
       summary: Delete a recipe
@@ -149,6 +153,12 @@ components:
             $ref: "#/components/schemas/Error"
     NotFound:
       description: The resource does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    PayloadTooLarge:
+      description: The request body exceeds the size limit (1 MiB for JSON).
       content:
         application/json:
           schema:

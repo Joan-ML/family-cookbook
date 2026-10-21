@@ -36,7 +36,9 @@ family-cookbook/
 │   └── openapi.yaml   # API contract shared by backend and frontend
 ├── backend/           # Go HTTP API
 │   ├── cmd/server/    # entry point
-│   └── internal/api/  # handlers and contract tests
+│   └── internal/
+│       ├── api/       # handlers, generated code, contract tests
+│       └── store/     # storage interface; sqlite/ implements it
 ├── frontend/          # React single-page app
 │   └── src/
 │       ├── api/       # typed client + types generated from the contract
@@ -106,8 +108,9 @@ Each package is self-contained and uses its own tools.
 **Backend** (Go 1.26+), from `backend/`:
 
 ```sh
-go run ./cmd/server   # API on :8080
+go run ./cmd/server   # API on :8080 (env: ADDR, DATA_DIR, default "data")
 go test ./...         # tests, including contract validation
+go generate ./...     # regenerate code after editing api/openapi.yaml
 ```
 
 **Frontend** (Node.js 22+), from `frontend/`:

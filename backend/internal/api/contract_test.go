@@ -49,6 +49,18 @@ func newContractServer(t *testing.T, h http.Handler) *contractServer {
 // doesn't match the spec. The returned response body is fully readable.
 func (s *contractServer) do(t *testing.T, method, path string, body []byte) *http.Response {
 	t.Helper()
+	return s.send(t, method, path, body, true)
+}
+
+// doInvalid sends a request that deliberately breaks the spec, to test how
+// the server rejects it. The response is still checked against the spec.
+func (s *contractServer) doInvalid(t *testing.T, method, path string, body []byte) *http.Response {
+	t.Helper()
+	return s.send(t, method, path, body, false)
+}
+
+func (s *contractServer) send(t *testing.T, method, path string, body []byte, checkRequest bool) *http.Response {
+	t.Helper()
 
 	req, err := http.NewRequest(method, s.ts.URL+path, bytes.NewReader(body))
 	if err != nil {
@@ -66,11 +78,19 @@ func (s *contractServer) do(t *testing.T, method, path string, body []byte) *htt
 		Request:    req,
 		PathParams: pathParams,
 		Route:      route,
+		Options: &openapi3filter.Options{
+			// Sessions aren't implemented yet; see authenticate in server.go.
+			AuthenticationFunc: openapi3filter.NoopAuthenticationFunc,
+			// Fail on status codes the spec doesn't document.
+			IncludeResponseStatus: true,
+		},
 	}
-	if err := openapi3filter.ValidateRequest(context.Background(), reqInput); err != nil {
-		t.Fatalf("request does not match spec: %v", err)
+	if checkRequest {
+		if err := openapi3filter.ValidateRequest(context.Background(), reqInput); err != nil {
+			t.Fatalf("request does not match spec: %v", err)
+		}
+		req.Body = io.NopCloser(bytes.NewReader(body))
 	}
-	req.Body = io.NopCloser(bytes.NewReader(body))
 
 	res, err := s.ts.Client().Do(req)
 	if err != nil {
@@ -87,6 +107,7 @@ func (s *contractServer) do(t *testing.T, method, path string, body []byte) *htt
 		Status:                 res.StatusCode,
 		Header:                 res.Header,
 		Body:                   io.NopCloser(bytes.NewReader(resBody)),
+		Options:                reqInput.Options,
 	}
 	if err := openapi3filter.ValidateResponse(context.Background(), resInput); err != nil {
 		t.Fatalf("response does not match spec: %v\nbody: %s", err, resBody)
