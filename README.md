@@ -89,7 +89,15 @@ Recipes are built first and authentication second, but the app is designed for a
 - **Data:** recipes record `createdBy` and `updatedBy` from the start.
 - **No deployment until authentication exists.**
 
-Open question: how accounts are created. The leading option is an admin command (e.g. `cookbook user add <name>`) with no public sign-up.
+There is no public sign-up. Accounts are managed with subcommands of the same binary, which run against the same database as the server (in Docker: `docker exec -it <container> cookbook user add <name>`):
+
+```sh
+cookbook serve                  # run the web app (default)
+cookbook user add <username>    # passwords are always prompted, never passed as arguments
+cookbook user passwd <username> # reset a password
+cookbook user list
+cookbook user remove <username>
+```
 
 ### Development
 
