@@ -1,0 +1,57 @@
+name: Image
+
+# Builds the single deployable image and checks that it runs. Nothing is
+# pushed to a registry yet.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".github/workflows/image.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".github/workflows/image.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: family-cookbook:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test
+        run: |
+          docker run -d --name cookbook -p 8080:8080 -v cookbook-data:/data family-cookbook:ci
+          trap 'docker logs cookbook' EXIT
+
+          curl -sf --retry 10 --retry-connrefused --retry-delay 1 http://localhost:8080/api/health
+          # The UI is embedded, including for client-side routes.
+          curl -sf http://localhost:8080/recipes/anything | grep -q '<title>Family Cookbook</title>'
+          # The unprivileged user can write to the data volume.
+          curl -sf -X POST http://localhost:8080/api/recipes -H 'Content-Type: application/json' \
+            -d '{"name":"Smoke test","ingredients":[],"steps":[],"tags":[]}'
+          curl -sf http://localhost:8080/api/recipes | grep -q 'Smoke test'

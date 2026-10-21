@@ -6,5 +6,8 @@
 # Local Claude Code settings
 .claude/settings.local.json
 
+# Frontend build copied in for `go build -tags embedui` (see Dockerfile)
+backend/internal/web/dist/
+
 # Local runtime data (SQLite file, photos), e.g. backend/data/
 data/

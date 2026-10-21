@@ -1,13 +1,19 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
+	"time"
 
 	"family-cookbook/backend/internal/api"
 	"family-cookbook/backend/internal/store/sqlite"
+	"family-cookbook/backend/internal/web"
 )
 
 func main() {
@@ -25,10 +31,27 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/", api.NewServer(st))
+	if ui := web.Handler(); ui != nil {
+		mux.Handle("/", ui)
+	}
 
-	log.Printf("listening on %s, data in %s", addr, dataDir)
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatal(err)
+	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	go func() {
+		log.Printf("listening on %s, data in %s", addr, dataDir)
+		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			log.Fatal(err)
+		}
+	}()
+
+	// Finish in-flight requests on Ctrl+C or `docker stop` before closing the database.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	<-ctx.Done()
+	log.Print("shutting down")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("shutdown: %v", err)
 	}
 }
 

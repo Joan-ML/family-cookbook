@@ -38,12 +38,15 @@ family-cookbook/
 │   ├── cmd/server/    # entry point
 │   └── internal/
 │       ├── api/       # handlers, generated code, contract tests
-│       └── store/     # storage interface; sqlite/ implements it
+│       ├── store/     # storage interface; sqlite/ implements it
+│       └── web/       # serves the embedded frontend in the image
 ├── frontend/          # React single-page app
 │   └── src/
 │       ├── api/       # typed client + types generated from the contract
 │       └── mocks/     # MSW handlers for tests and mock dev mode
-├── .github/workflows/ # CI, one workflow per package
+├── .github/workflows/ # CI: one workflow per package, plus the image
+├── Dockerfile         # the single deployable image
+├── compose.yaml       # run the image locally
 └── README.md
 ```
 
@@ -181,3 +184,19 @@ Why one container rather than separate backend and nginx/frontend containers:
 - **Less to run:** one container, one volume, one health check, one log stream.
 
 HTTPS, compression and similar concerns are handled by a reverse proxy in front of the container (e.g. Caddy), not by the app.
+
+The image runs as an unprivileged user on a distroless base (no shell). It serves the UI and the API on port 8080 and keeps its data in `/data`. Build and run it from the repository root, with Docker or Podman (`podman` takes the same arguments):
+
+```sh
+docker compose up --build        # build and run; open http://localhost:8080
+
+# or by hand:
+docker build -t family-cookbook .
+docker run -d --name cookbook -p 8080:8080 -v cookbook-data:/data family-cookbook
+```
+
+Use a named volume as above. To use a host directory instead, it must be writable by the container's user (UID 65532); with rootless Podman, add `:U` to the mount (`-v ./data:/data:U`).
+
+To back up, copy `cookbook.db` from the volume while the container is stopped. The `.db-wal` and `.db-shm` files next to it are only present while it runs.
+
+Until login exists, the image is for local use only: don't expose it to the internet.

@@ -1,0 +1,14 @@
+# Run the app locally from the image:  docker compose up --build
+# (or `podman compose up --build`). Then open http://localhost:8080.
+services:
+  cookbook:
+    build: .
+    image: family-cookbook
+    ports:
+      - "8080:8080"
+    volumes:
+      - cookbook-data:/data
+    restart: unless-stopped
+
+volumes:
+  cookbook-data:
