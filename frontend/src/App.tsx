@@ -26,6 +26,7 @@ function App() {
           </Route>
         </Switch>
       </main>
+      <footer className="site-footer">Family Cookbook · {import.meta.env.VITE_APP_VERSION}</footer>
     </>
   )
 }

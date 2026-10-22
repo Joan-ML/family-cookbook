@@ -203,6 +203,15 @@ describe('recipe form', () => {
   })
 })
 
+test('shows the app version in the footer', async () => {
+  renderApp('/')
+
+  expect(await screen.findByRole('contentinfo')).toHaveTextContent(
+    `Family Cookbook · ${import.meta.env.VITE_APP_VERSION}`,
+  )
+  expect(import.meta.env.VITE_APP_VERSION).toBeTruthy()
+})
+
 test('shows not found for an unknown page', async () => {
   renderApp('/nope')
 

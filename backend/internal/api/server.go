@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"family-cookbook/backend/internal/store"
+	"family-cookbook/backend/internal/version"
 
 	"github.com/getkin/kin-openapi/openapi3filter"
 	middleware "github.com/oapi-codegen/nethttp-middleware"
@@ -123,7 +124,7 @@ func limitBody(next http.Handler) http.Handler {
 }
 
 func (s *server) GetHealth(ctx context.Context, _ GetHealthRequestObject) (GetHealthResponseObject, error) {
-	return GetHealth200JSONResponse{Status: Ok}, nil
+	return GetHealth200JSONResponse{Status: Ok, Version: version.Version}, nil
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {

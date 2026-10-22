@@ -191,7 +191,7 @@ The image runs as an unprivileged user on a distroless base (no shell). It serve
 docker compose up --build        # build and run; open http://localhost:8080
 
 # or by hand:
-docker build -t family-cookbook .
+docker build --build-arg VERSION=$(git describe --tags --always --dirty) -t family-cookbook .
 docker run -d --name cookbook -p 8080:8080 -v cookbook-data:/data family-cookbook
 ```
 
@@ -200,3 +200,33 @@ Use a named volume as above. To use a host directory instead, it must be writabl
 To back up, copy `cookbook.db` from the volume while the container is stopped. The `.db-wal` and `.db-shm` files next to it are only present while it runs.
 
 Until login exists, the image is for local use only: don't expose it to the internet.
+
+### Versioning and releases
+
+Git tags are the only source of truth for the version; no file in the repository holds it. Frontend and backend always ship together, so they share one version. It appears in the page footer, in `/api/health` and in the server log.
+
+Versions follow SemVer, with the numbers chosen for whoever runs the server:
+
+- **Major:** upgrading needs manual action or can't be undone, e.g. a database migration worth a backup first.
+- **Minor:** new features.
+- **Patch:** fixes.
+
+Versions stay at `0.x` until login exists; `v1.0.0` will mean "safe to deploy".
+
+To release, tag a commit on `main` and push the tag. CI builds, tests and publishes the image:
+
+```sh
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+Published images (GitHub Container Registry):
+
+| Image tag | Contains |
+|---|---|
+| `1.2.3` | that release |
+| `1.2` | the latest `1.2.x` release |
+| `latest` | the latest release |
+| `main` | the latest commit on `main`, unreleased |
+
+Builds that aren't from a release tag show `git describe` output, e.g. `v0.2.0-3-gabc1234` (three commits after `v0.2.0`), with `-dirty` when there are uncommitted changes, or `dev` when no git information is available.

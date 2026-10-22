@@ -67,6 +67,8 @@ export interface components {
         Health: {
             /** @enum {string} */
             status: "ok";
+            /** @description Application version, e.g. "v1.2.3", or "dev" for unversioned builds. */
+            version: string;
         };
         Error: {
             /** @description Human-readable description of the problem. */

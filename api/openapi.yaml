@@ -167,11 +167,14 @@ components:
   schemas:
     Health:
       type: object
-      required: [status]
+      required: [status, version]
       properties:
         status:
           type: string
           enum: [ok]
+        version:
+          description: Application version, e.g. "v1.2.3", or "dev" for unversioned builds.
+          type: string
 
     Error:
       type: object

@@ -1,5 +1,9 @@
 # One image for the whole app: the Go binary with the built frontend embedded.
-# Build from the repository root:  docker build -t family-cookbook .
+# Build from the repository root:
+#   docker build --build-arg VERSION=$(git describe --tags --always --dirty) -t family-cookbook .
+
+# Shown in the UI footer, /api/health and the logs. CI sets it from the git tag.
+ARG VERSION=dev
 
 # --- Frontend ----------------------------------------------------------------
 FROM node:22-alpine AS frontend
@@ -7,7 +11,8 @@ WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
-RUN npm run build \
+ARG VERSION
+RUN VITE_APP_VERSION=$VERSION npm run build \
     # The MSW worker is only for `npm run dev:mock`.
     && rm -f dist/mockServiceWorker.js
 
@@ -18,7 +23,9 @@ COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
 COPY --from=frontend /src/frontend/dist ./internal/web/dist
-RUN CGO_ENABLED=0 go build -tags embedui -trimpath -ldflags="-s -w" \
+ARG VERSION
+RUN CGO_ENABLED=0 go build -tags embedui -trimpath \
+        -ldflags="-s -w -X family-cookbook/backend/internal/version.Version=$VERSION" \
         -o /out/cookbook ./cmd/server \
     && mkdir /out/data
 

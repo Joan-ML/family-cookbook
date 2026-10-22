@@ -65,7 +65,7 @@ function normalize(input: RecipeInput): RecipeInput | ApiError {
 }
 
 export const handlers = [
-  http.get('*/api/health', () => HttpResponse.json<Health>({ status: 'ok' })),
+  http.get('*/api/health', () => HttpResponse.json<Health>({ status: 'ok', version: 'mock' })),
 
   http.get('*/api/recipes', () => {
     const items = [...recipes.values()]

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"family-cookbook/backend/internal/store/sqlite"
+	"family-cookbook/backend/internal/version"
 )
 
 // testNow is the fixed clock used by test servers; tests advance it with tick.
@@ -76,6 +77,9 @@ func TestHealth(t *testing.T) {
 	res := srv.do(t, http.MethodGet, "/api/health", nil)
 
 	wantStatus(t, res, http.StatusOK)
+	if got := decode[Health](t, res).Version; got != version.Version {
+		t.Errorf("version = %q, want %q", got, version.Version)
+	}
 }
 
 func TestOversizedBodyReturns413(t *testing.T) {

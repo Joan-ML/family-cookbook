@@ -13,6 +13,7 @@ import (
 
 	"family-cookbook/backend/internal/api"
 	"family-cookbook/backend/internal/store/sqlite"
+	"family-cookbook/backend/internal/version"
 	"family-cookbook/backend/internal/web"
 )
 
@@ -37,7 +38,7 @@ func main() {
 
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
-		log.Printf("listening on %s, data in %s", addr, dataDir)
+		log.Printf("family cookbook %s listening on %s, data in %s", version.Version, addr, dataDir)
 		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			log.Fatal(err)
 		}
