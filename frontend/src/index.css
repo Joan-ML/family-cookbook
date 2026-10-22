@@ -130,6 +130,14 @@ a {
   font-size: 0.9rem;
 }
 
+.session-bar a {
+  color: var(--banner-text);
+}
+
+.account-form {
+  margin: 1.5rem 0 0;
+}
+
 .session-bar .link-button {
   color: var(--banner-text);
   text-decoration: underline;

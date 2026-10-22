@@ -355,7 +355,7 @@ func (s *Store) GetUser(ctx context.Context, username string) (store.User, error
 }
 
 func (s *Store) ListUsers(ctx context.Context) ([]store.User, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, username, created_at FROM users ORDER BY username`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, username, password_hash, created_at FROM users ORDER BY username`)
 	if err != nil {
 		return nil, err
 	}
@@ -364,7 +364,7 @@ func (s *Store) ListUsers(ctx context.Context) ([]store.User, error) {
 	for rows.Next() {
 		var u store.User
 		var createdAt string
-		if err := rows.Scan(&u.ID, &u.Username, &createdAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &createdAt); err != nil {
 			return nil, err
 		}
 		if u.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt); err != nil {
@@ -442,4 +442,62 @@ func servings(n int) any {
 		return nil
 	}
 	return n
+}
+
+var _ store.SetupTokens = (*Store)(nil)
+
+func (s *Store) ChangePassword(ctx context.Context, userID int64, passwordHash, keepSessionHash string) error {
+	return s.withTx(ctx, func(tx *sql.Tx) error {
+		if err := expectOneRow(tx.ExecContext(ctx,
+			`UPDATE users SET password_hash = ? WHERE id = ?`, passwordHash, userID)); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx,
+			`DELETE FROM sessions WHERE user_id = ? AND token_hash != ?`, userID, keepSessionHash)
+		return err
+	})
+}
+
+func (s *Store) CreateSetupToken(ctx context.Context, tokenHash string, userID int64, at, expiresAt time.Time) error {
+	return s.withTx(ctx, func(tx *sql.Tx) error {
+		// Only the newest link works.
+		if _, err := tx.ExecContext(ctx, `DELETE FROM setup_tokens WHERE user_id = ?`, userID); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx,
+			`INSERT INTO setup_tokens (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)`,
+			tokenHash, userID, formatTime(at), formatTime(expiresAt))
+		return err
+	})
+}
+
+func (s *Store) UseSetupToken(ctx context.Context, tokenHash, passwordHash string, now time.Time) (store.User, error) {
+	var u store.User
+	err := s.withTx(ctx, func(tx *sql.Tx) error {
+		var createdAt string
+		err := tx.QueryRowContext(ctx, `
+			SELECT u.id, u.username, u.created_at
+			FROM setup_tokens t JOIN users u ON u.id = t.user_id
+			WHERE t.token_hash = ? AND t.expires_at > ?`, tokenHash, formatTime(now)).
+			Scan(&u.ID, &u.Username, &createdAt)
+		if errors.Is(err, sql.ErrNoRows) {
+			return store.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if u.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt); err != nil {
+			return err
+		}
+		u.PasswordHash = passwordHash
+		if _, err := tx.ExecContext(ctx, `UPDATE users SET password_hash = ? WHERE id = ?`, passwordHash, u.ID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM setup_tokens WHERE user_id = ?`, u.ID); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, u.ID)
+		return err
+	})
+	return u, err
 }

@@ -56,7 +56,7 @@ func newTestServer(t *testing.T) (*contractServer, *server) {
 		newID: func() string { ids++; return fmt.Sprintf("r%d", ids) },
 	}
 	// Sessions follow the same clock, which tick moves.
-	s.auth = auth.NewService(st, st, func() time.Time { return s.now() })
+	s.auth = auth.NewService(st, func() time.Time { return s.now() })
 
 	srv := newContractServer(t, newHandler(s))
 	srv.db = st

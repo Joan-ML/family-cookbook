@@ -11,16 +11,18 @@ import (
 	"time"
 
 	"family-cookbook/backend/internal/auth"
+	"family-cookbook/backend/internal/store"
 )
 
 const sessionCookie = "session"
 
 // request holds what authenticate learned about a request, for the handlers.
 type request struct {
-	user   string // empty when not logged in
-	userID int64
-	token  string // the session cookie as sent, even if no longer valid
-	secure bool   // whether cookies set in reply get the Secure flag
+	user    string // empty when not logged in
+	userID  int64
+	session store.Session
+	token   string // the session cookie as sent, even if no longer valid
+	secure  bool   // whether cookies set in reply get the Secure flag
 }
 
 type requestKey struct{}
@@ -51,7 +53,7 @@ func (s *server) authenticate(next http.Handler) http.Handler {
 			sess, renewed, err := s.auth.Authenticate(r.Context(), c.Value)
 			switch {
 			case err == nil:
-				info.user, info.userID = sess.Username, sess.UserID
+				info.user, info.userID, info.session = sess.Username, sess.UserID, sess
 				if renewed {
 					http.SetCookie(w, s.sessionCookie(c.Value, info.secure))
 				}
@@ -128,4 +130,44 @@ func (s *server) LogOut(ctx context.Context, _ LogOutRequestObject) (LogOutRespo
 
 func (s *server) GetMe(ctx context.Context, _ GetMeRequestObject) (GetMeResponseObject, error) {
 	return GetMe200JSONResponse{Username: currentUser(ctx)}, nil
+}
+
+func (s *server) SetUpPassword(ctx context.Context, req SetUpPasswordRequestObject) (SetUpPasswordResponseObject, error) {
+	token, sess, err := s.auth.CompleteSetup(ctx, req.Body.Token, req.Body.Password)
+	var bad *auth.BadPasswordError
+	switch {
+	case errors.As(err, &bad):
+		return SetUpPassword400JSONResponse{Message: bad.Reason}, nil
+	case errors.Is(err, auth.ErrInvalidLink):
+		return SetUpPassword400JSONResponse{Message: auth.ErrInvalidLink.Error()}, nil
+	case err != nil:
+		return nil, err
+	}
+	cookie := s.sessionCookie(token, requestInfo(ctx).secure).String()
+	return SetUpPassword200JSONResponse{
+		Body:    User{Username: sess.Username},
+		Headers: SetUpPassword200ResponseHeaders{SetCookie: &cookie},
+	}, nil
+}
+
+func (s *server) ChangePassword(ctx context.Context, req ChangePasswordRequestObject) (ChangePasswordResponseObject, error) {
+	err := s.auth.ChangePassword(ctx, requestInfo(ctx).session, req.Body.CurrentPassword, req.Body.NewPassword)
+	var bad *auth.BadPasswordError
+	var tooMany *auth.TooManyAttemptsError
+	switch {
+	case errors.As(err, &tooMany):
+		seconds := int(math.Ceil(tooMany.RetryAfter.Seconds()))
+		return ChangePassword429JSONResponse{TooManyRequestsJSONResponse{
+			Body:    Error{Message: "too many failed attempts; try again later"},
+			Headers: TooManyRequestsResponseHeaders{RetryAfter: &seconds},
+		}}, nil
+	case errors.Is(err, auth.ErrInvalidCredentials):
+		// 400, not 401: the session is fine, only the password given is wrong.
+		return ChangePassword400JSONResponse{Message: "the current password is wrong"}, nil
+	case errors.As(err, &bad):
+		return ChangePassword400JSONResponse{Message: bad.Reason}, nil
+	case err != nil:
+		return nil, err
+	}
+	return ChangePassword204Response{}, nil
 }

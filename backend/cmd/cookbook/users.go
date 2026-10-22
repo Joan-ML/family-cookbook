@@ -12,8 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/term"
-
 	"family-cookbook/backend/internal/auth"
 	"family-cookbook/backend/internal/store"
 	"family-cookbook/backend/internal/store/sqlite"
@@ -28,12 +26,8 @@ func openStore(dataDir string) (*sqlite.Store, error) {
 	return sqlite.Open(dbPath(dataDir))
 }
 
-func userAdd(dataDir, name string, stdin io.Reader, stderr io.Writer) error {
+func userAdd(dataDir, name string, stdout, stderr io.Writer) error {
 	username, err := auth.NormalizeUsername(name)
-	if err != nil {
-		return err
-	}
-	hash, err := readNewPassword(username, stdin, stderr)
 	if err != nil {
 		return err
 	}
@@ -42,40 +36,78 @@ func userAdd(dataDir, name string, stdin io.Reader, stderr io.Writer) error {
 		return err
 	}
 	defer st.Close()
-	err = st.CreateUser(context.Background(), username, hash, time.Now())
-	if errors.Is(err, store.ErrExists) {
-		return fmt.Errorf("user %s already exists", username)
+	// No password: nobody can log in until the setup link is used.
+	if err := createUser(st, username, ""); err != nil {
+		return err
 	}
+	token, expires, err := auth.NewService(st, time.Now).IssueSetupLink(context.Background(), username)
 	if err != nil {
+		return err
+	}
+	fmt.Fprintf(stderr, "created user %s\n", username)
+	printSetupLink(stdout, stderr, username, token, expires)
+	return nil
+}
+
+func userAddWithPassword(dataDir, name string, stdin io.Reader, stderr io.Writer) error {
+	username, err := auth.NormalizeUsername(name)
+	if err != nil {
+		return err
+	}
+	hash, err := readPassword(stdin)
+	if err != nil {
+		return err
+	}
+	st, err := openStore(dataDir)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	if err := createUser(st, username, hash); err != nil {
 		return err
 	}
 	fmt.Fprintf(stderr, "created user %s\n", username)
 	return nil
 }
 
-func userPasswd(dataDir, name string, stdin io.Reader, stderr io.Writer) error {
-	username, err := auth.NormalizeUsername(name)
-	if err != nil {
-		return err
+func createUser(st *sqlite.Store, username, hash string) error {
+	err := st.CreateUser(context.Background(), username, hash, time.Now())
+	if errors.Is(err, store.ErrExists) {
+		return fmt.Errorf("user %s already exists", username)
 	}
+	return err
+}
+
+func userReset(dataDir, name string, stdout, stderr io.Writer) error {
 	st, err := openStore(dataDir)
 	if err != nil {
 		return err
 	}
 	defer st.Close()
-	// Check first, so nobody types a password for a user that doesn't exist.
-	if _, err := st.GetUser(context.Background(), username); errors.Is(err, store.ErrNotFound) {
-		return fmt.Errorf("no user %s", username)
+	token, expires, err := auth.NewService(st, time.Now).ResetPassword(context.Background(), name)
+	if errors.Is(err, auth.ErrNoSuchUser) {
+		return fmt.Errorf("no user %s", name)
 	}
-	hash, err := readNewPassword(username, stdin, stderr)
 	if err != nil {
 		return err
 	}
-	if err := st.SetPassword(context.Background(), username, hash); err != nil {
-		return err
-	}
-	fmt.Fprintf(stderr, "changed the password of %s and logged them out everywhere\n", username)
+	username, _ := auth.NormalizeUsername(name)
+	fmt.Fprintf(stderr, "disabled the password of %s and logged them out everywhere\n", username)
+	printSetupLink(stdout, stderr, username, token, expires)
 	return nil
+}
+
+// printSetupLink prints the link alone on stdout, so scripts can capture it,
+// and how to use it on stderr.
+func printSetupLink(stdout, stderr io.Writer, username, token string, expires time.Time) {
+	path := "/set-password#" + token // after "#", the token never reaches server logs
+	base := strings.TrimRight(os.Getenv("PUBLIC_URL"), "/")
+	fmt.Fprintf(stderr, "send %s this link to choose a password; it works once, until %s:\n",
+		username, expires.Local().Format("2006-01-02 15:04"))
+	fmt.Fprintln(stdout, base+path)
+	if base == "" {
+		fmt.Fprintln(stderr, "(add it to the app's address, or set PUBLIC_URL to print complete links)")
+	}
 }
 
 func userList(dataDir string, stdout io.Writer) error {
@@ -89,7 +121,11 @@ func userList(dataDir string, stdout io.Writer) error {
 		return err
 	}
 	for _, u := range users {
-		fmt.Fprintf(stdout, "%s\tcreated %s\n", u.Username, u.CreatedAt.Local().Format("2006-01-02"))
+		status := ""
+		if u.PasswordHash == "" {
+			status = "\tno password yet (setup link sent)"
+		}
+		fmt.Fprintf(stdout, "%s\tcreated %s%s\n", u.Username, u.CreatedAt.Local().Format("2006-01-02"), status)
 	}
 	return nil
 }
@@ -121,34 +157,14 @@ func userRemove(dataDir, name string, stderr io.Writer) error {
 	return nil
 }
 
-// readNewPassword asks for a password and returns its hash. On a terminal it
-// asks twice without echo; otherwise it reads one line from stdin.
-func readNewPassword(username string, stdin io.Reader, stderr io.Writer) (string, error) {
-	var password string
-	if f, ok := stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
-		fmt.Fprintf(stderr, "New password for %s: ", username)
-		first, err := term.ReadPassword(int(f.Fd()))
-		fmt.Fprintln(stderr)
-		if err != nil {
-			return "", err
-		}
-		fmt.Fprint(stderr, "Again: ")
-		second, err := term.ReadPassword(int(f.Fd()))
-		fmt.Fprintln(stderr)
-		if err != nil {
-			return "", err
-		}
-		if string(first) != string(second) {
-			return "", errors.New("the passwords don't match")
-		}
-		password = string(first)
-	} else {
-		line, err := bufio.NewReader(stdin).ReadString('\n')
-		if err != nil && !(errors.Is(err, io.EOF) && line != "") {
-			return "", errors.New("no password given on standard input")
-		}
-		password = strings.TrimRight(line, "\r\n")
+// readPassword reads a new password as one line from stdin and returns its
+// hash.
+func readPassword(stdin io.Reader) (string, error) {
+	line, err := bufio.NewReader(stdin).ReadString('\n')
+	if err != nil && !(errors.Is(err, io.EOF) && line != "") {
+		return "", errors.New("no password given on standard input")
 	}
+	password := strings.TrimRight(line, "\r\n")
 	if err := auth.CheckNewPassword(password); err != nil {
 		return "", err
 	}

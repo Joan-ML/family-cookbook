@@ -69,6 +69,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/password/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Choose a password with a setup link
+         * @description Setup links are created by the server admin (`cookbook user add` and
+         *     `cookbook user reset`). Each works once and expires after 48 hours.
+         *     Setting the password ends the user's other sessions and logs them in.
+         */
+        post: operations["setUpPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change your password
+         * @description Needs the current password. Ends your other sessions; this one stays
+         *     logged in.
+         */
+        put: operations["changePassword"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me": {
         parameters: {
             query?: never;
@@ -248,6 +291,18 @@ export interface components {
             username: string;
             /** Format: password */
             password: string;
+        };
+        PasswordSetup: {
+            /** @description The part of the setup link after "#". */
+            token: string;
+            /** Format: password */
+            password: string;
+        };
+        PasswordChange: {
+            /** Format: password */
+            currentPassword: string;
+            /** Format: password */
+            newPassword: string;
         };
         User: {
             username: string;
@@ -516,6 +571,74 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    setUpPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordSetup"];
+            };
+        };
+        responses: {
+            /** @description Password set; logged in. */
+            200: {
+                headers: {
+                    /** @description The session cookie. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            /** @description The link is invalid, used or expired, or the password is too weak. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    changePassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChange"];
+            };
+        };
+        responses: {
+            /** @description Password changed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The current password is wrong, or the new one is too weak. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["TooManyRequests"];
         };
     };
     getMe: {

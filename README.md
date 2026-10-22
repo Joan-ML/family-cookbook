@@ -92,7 +92,8 @@ The storage layer sits behind a small Go interface, so switching to another data
 The app is self-hosted for family and friends, and may be reachable from the internet.
 
 - **Accounts are created by the server admin,** the person running the server, from the command line (below). There is no public sign-up, and the server admin isn't a role inside the app.
-- **Users log in** with a username and password and stay logged in through a session cookie. Passwords are hashed with argon2id; sessions are stored on the server, so logging out or removing a user ends them immediately; repeated failed logins are slowed down.
+- **People choose their own passwords, through one-time setup links.** Without email, the server admin passes the link on however they like (a message, in person). Creating an account prints a link with which the new user chooses their password; it works once, for 48 hours, and logs them in. A forgotten or compromised password is handled the same way: `cookbook user reset` disables the old password, logs the user out everywhere and prints a new link. The server admin never sees anyone's password. The token sits after the `#` in the link, so browsers never send it to the server, and it's removed from the address bar once the page opens.
+- **Users log in** with a username and password and stay logged in through a session cookie, and change their password from their account page (needing the current one; their other devices are logged out). Passwords are hashed with argon2id; sessions are stored on the server, so logging out or removing a user ends them immediately; repeated failed logins, and failed attempts at the current password when changing it, are slowed down.
 - **Cookbooks have two roles.** Whoever creates a cookbook becomes its **admin**. Admins invite existing users by username, remove members, change roles and delete the cookbook; **editors** create, edit and delete its recipes. A cookbook can have several admins, but always at least one: the last admin can't leave or be demoted. Anyone else can leave a cookbook.
 - **Cookbooks are private to their members.** For anyone else, a cookbook and its recipes don't exist: the API answers `404`, not `403`, so cookbooks can't be discovered.
 - **Removing an account never leaves a cookbook without an admin.** Cookbooks the user was the only member of are deleted with their recipes; where they were the last admin, the longest-standing remaining member becomes admin. `cookbook user remove` lists what it changed. Recipes keep showing who created and last edited them, as history, even after that account is gone.
@@ -101,23 +102,25 @@ The app is self-hosted for family and friends, and may be reachable from the int
 
 The work was split into increments, each starting with its API contract: 1. authentication, 2. cookbooks and membership, 3. member management. All three are done.
 
-Accounts are managed with subcommands of the same binary, which run against the same database as the server (in Docker: `docker exec -it <container> cookbook user add <name>`):
+Accounts are managed with subcommands of the same binary, which run against the same database as the server (in Docker: `docker exec <container> cookbook user add <name>`):
 
 ```sh
 cookbook serve                  # run the web app (default)
-cookbook user add <username>    # asks for the password twice, without echo
-cookbook user passwd <username> # set a new password; logs the user out everywhere
-cookbook user list
+cookbook user add <username>    # create an account; prints its setup link
+cookbook user reset <username>  # disable the password, log out everywhere, print a new link
+cookbook user list              # shows who hasn't chosen a password yet
 cookbook user remove <username> # also logs the user out everywhere
 ```
 
-Passwords are never passed as arguments, where they'd end up in shell history. On a terminal they're typed (twice, without echo); otherwise one line is read from standard input, for scripts: `docker exec -i <container> cookbook user add <name> < password.txt`. Passwords need at least 10 characters. Usernames are 1–64 characters out of letters, digits, `.`, `_` and `-`, and ignore case.
+Set `PUBLIC_URL` (e.g. `https://cookbook.example.com`) for complete links; otherwise the commands print the path, `/set-password#…`, to append to the app's address. The link is the only thing on standard output, so scripts can capture it.
+
+For scripts and tests, `cookbook user add <username> --password-stdin` sets a password directly, read as one line from standard input; it's never passed as an argument, where it would end up in shell history. Passwords need at least 10 characters. Usernames are 1–64 characters out of letters, digits, `.`, `_` and `-`, and ignore case.
 
 ### Running locally
 
 Requirements: Go 1.26+ and Node.js 22+ (or the devcontainer, below).
 
-1. **Create an account** (once). It creates `backend/data/cookbook.db` if needed.
+1. **Create an account** (once). It creates `backend/data/cookbook.db` if needed, and prints a setup link: open `http://localhost:5173` followed by the printed `/set-password#…` once the frontend is running (step 3), and choose your password.
 
    ```sh
    cd backend
@@ -131,7 +134,7 @@ Requirements: Go 1.26+ and Node.js 22+ (or the devcontainer, below).
    go run ./cmd/cookbook
    ```
 
-3. **Start the frontend** (terminal 2), then open <http://localhost:5173>, log in and create a cookbook:
+3. **Start the frontend** (terminal 2), then open your setup link (or <http://localhost:5173> to log in) and create a cookbook:
 
    ```sh
    cd frontend
@@ -198,12 +201,20 @@ npm run check:api     # fail if generated types are stale
 ```sh
 npm install                              # once
 npx playwright install chromium webkit   # once; downloads browsers to ~/.cache/ms-playwright
-(cd ../backend && echo 'e2e test password' | go run ./cmd/cookbook user add e2e)            # once per database
-(cd ../backend && echo 'e2e friend password' | go run ./cmd/cookbook user add e2e-friend)
+(cd ../backend && echo 'e2e test password' | go run ./cmd/cookbook user add e2e --password-stdin)            # once per database
+(cd ../backend && echo 'e2e friend password' | go run ./cmd/cookbook user add e2e-friend --password-stdin)
 BASE_URL=http://localhost:8080 npx playwright test          # against the image or `go run`
 BASE_URL=http://localhost:5173 npx playwright test          # or through Vite
 npx playwright test --project=android    # one browser only
 npm run report                           # HTML report of the last run
+```
+
+The setup-link test needs a fresh, unused link per phone, since links work once; without them it's skipped:
+
+```sh
+export E2E_SETUP_LINK_ANDROID=$(cd ../backend && go run ./cmd/cookbook user add e2e-newbie-android 2>/dev/null)
+export E2E_SETUP_LINK_IPHONE=$(cd ../backend && go run ./cmd/cookbook user add e2e-newbie-iphone 2>/dev/null)
+# for another run: `cookbook user reset e2e-newbie-…` prints new ones
 ```
 
 Playwright's WebKit is built for Ubuntu and needs library versions that other distributions (e.g. Fedora) don't ship, so outside the devcontainer it may not start; use the devcontainer, or `--project=android` and let CI run both.
@@ -260,7 +271,7 @@ docker run -d --name cookbook -p 8080:8080 -v cookbook-data:/data family-cookboo
 
 Use a named volume as above. To use a host directory instead, it must be writable by the container's user (UID 65532); with rootless Podman, add `:U` to the mount (`-v ./data:/data:U`).
 
-**First account.** After the first start, create your account inside the container: `docker exec -it cookbook cookbook user add <your name>`.
+**First account.** Set `PUBLIC_URL` (e.g. `PUBLIC_URL: https://cookbook.example.com` under `environment`) so setup links are complete. After the first start, create your account inside the container with `docker exec cookbook cookbook user add <your name>`, and open the printed link to choose your password. Create other people's accounts the same way and send them their links.
 
 **HTTPS.** Put the app behind a reverse proxy that provides HTTPS (e.g. Caddy) before letting people log in from elsewhere. The session cookie is marked `Secure`, so browsers only send it over HTTPS, except when the app is reached as `localhost`. If you must serve plain HTTP under another name (e.g. a LAN address), set `INSECURE_COOKIES=true`, knowing that passwords and sessions then travel unencrypted.
 

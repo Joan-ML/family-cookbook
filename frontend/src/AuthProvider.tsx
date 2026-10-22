@@ -31,6 +31,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await session.logOut()
       setState({ status: 'anonymous', ended: false })
     },
+    setUpPassword: async (token: string, password: string) => {
+      const user = await session.setUpPassword(token, password)
+      setState({ status: 'user', user })
+    },
   }
   return <AuthContext value={auth}>{children}</AuthContext>
 }

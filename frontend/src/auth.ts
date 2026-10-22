@@ -11,6 +11,8 @@ export type Auth = {
   state: AuthState
   logIn: (username: string, password: string) => Promise<void>
   logOut: () => Promise<void>
+  /** Chooses a password with a setup link, which logs in. */
+  setUpPassword: (token: string, password: string) => Promise<void>
 }
 
 export const AuthContext = createContext<Auth | null>(null)

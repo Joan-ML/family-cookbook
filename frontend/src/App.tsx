@@ -1,14 +1,17 @@
 import { lazy, Suspense } from 'react'
-import { Link, Route, Switch } from 'wouter'
+import { Link, Route, Switch, useRoute } from 'wouter'
 import { useAuth } from './auth'
 import { AuthProvider } from './AuthProvider'
 import { Footer, Loading } from './components'
 import { CookbookListPage } from './pages/CookbookListPage'
 import { CookbookSettingsPage } from './pages/CookbookSettingsPage'
+import { AccountPage } from './pages/AccountPage'
 import { LoginPage } from './pages/LoginPage'
+import { SetPasswordPage } from './pages/SetPasswordPage'
 import { NotFound } from './pages/NotFound'
 import { RecipeListPage } from './pages/RecipeListPage'
 import { RecipePage } from './pages/RecipePage'
+import { paths } from './paths'
 
 // The form (and its drag-and-drop library) loads only when someone edits.
 const RecipeFormPage = lazy(() => import('./pages/RecipeFormPage').then((m) => ({ default: m.RecipeFormPage })))
@@ -37,7 +40,7 @@ function Header() {
       <p className="site-tagline">Our recipes, all in one place</p>
       {state.status === 'user' && (
         <p className="session-bar">
-          {state.user.username} ·{' '}
+          <Link href={paths.account}>{state.user.username}</Link> ·{' '}
           <button type="button" className="link-button" onClick={logOut}>
             Log out
           </button>
@@ -51,12 +54,16 @@ function Header() {
 // same address shows what was asked for, so links survive a login.
 function Content() {
   const { state } = useAuth()
+  // Setup links work logged out: they're how people get a password at all.
+  const [settingPassword] = useRoute(paths.setPassword)
+  if (settingPassword) return <SetPasswordPage />
   if (state.status === 'checking') return <Loading />
   if (state.status === 'anonymous') return <LoginPage sessionEnded={state.ended} />
   return (
     <Suspense fallback={<Loading />}>
       <Switch>
         <Route path="/" component={CookbookListPage} />
+        <Route path={paths.account} component={AccountPage} />
         <Route path="/cookbooks/:cookbook">
           {(p) => <RecipeListPage key={p.cookbook} cookbookId={p.cookbook} />}
         </Route>

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Family Cookbook API
-  version: 0.6.0
+  version: 0.7.0
   description: |
     Contract between the Go backend and the React frontend.
     Backend tests validate real responses against this file, and both sides
@@ -101,6 +101,67 @@ paths:
               description: Clears the session cookie.
               schema:
                 type: string
+
+  /password/setup:
+    post:
+      operationId: setUpPassword
+      summary: Choose a password with a setup link
+      description: |
+        Setup links are created by the server admin (`cookbook user add` and
+        `cookbook user reset`). Each works once and expires after 48 hours.
+        Setting the password ends the user's other sessions and logs them in.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordSetup"
+      responses:
+        "200":
+          description: Password set; logged in.
+          headers:
+            Set-Cookie:
+              description: The session cookie.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: The link is invalid, used or expired, or the password is too weak.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /me/password:
+    put:
+      operationId: changePassword
+      summary: Change your password
+      description: |
+        Needs the current password. Ends your other sessions; this one stays
+        logged in.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordChange"
+      responses:
+        "204":
+          description: Password changed.
+        "400":
+          description: The current password is wrong, or the new one is too weak.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
 
   /me:
     get:
@@ -523,6 +584,36 @@ components:
           minLength: 1
           maxLength: 64
         password:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          format: password
+
+    PasswordSetup:
+      type: object
+      required: [token, password]
+      properties:
+        token:
+          description: The part of the setup link after "#".
+          type: string
+          minLength: 1
+          maxLength: 200
+        password:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          format: password
+
+    PasswordChange:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          format: password
+        newPassword:
           type: string
           minLength: 1
           maxLength: 1024

@@ -19,3 +19,16 @@ export async function logIn(credentials: Credentials): Promise<User> {
 export async function logOut(): Promise<void> {
   await api.DELETE('/session')
 }
+
+/** Chooses a password with a setup link's token; this logs in. */
+export async function setUpPassword(token: string, password: string): Promise<User> {
+  const { data, error } = await api.POST('/password/setup', { body: { token, password } })
+  if (!data) throw new ApiRequestError(error?.message || "Couldn't set the password.")
+  return data
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const { error, response } = await api.PUT('/me/password', { body: { currentPassword, newPassword } })
+  if (response.status === 429) throw new ApiRequestError('Too many failed attempts. Wait a few minutes and try again.')
+  if (!response.ok) throw new ApiRequestError(error?.message || "Couldn't change the password.")
+}

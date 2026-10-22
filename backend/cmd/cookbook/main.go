@@ -28,13 +28,16 @@ Commands:
   serve                   Run the web app (the default).
   backup <file>           Write a consistent backup of the database to <file>,
                           while the app keeps running. Use "-" for standard output.
-  user add <username>     Create an account. Asks for the password.
-  user passwd <username>  Set a new password and log the user out everywhere.
+  user add <username>     Create an account and print a setup link, with which
+                          the user chooses their password (valid 48 hours).
+  user reset <username>   Disable the user's password, log them out everywhere
+                          and print a new setup link.
   user list               List accounts.
   user remove <username>  Delete an account and log it out everywhere.
 
-Passwords are read from the terminal without echo, or as one line from
-standard input when it isn't a terminal (e.g. docker exec -i ... < file).
+  user add <username> --password-stdin
+                          Create an account with the password read as one
+                          line from standard input, for scripts and tests.
 
 Environment:
   ADDR              Address to listen on (default ":8080").
@@ -42,6 +45,8 @@ Environment:
   APP_VERSION       Release version to report, e.g. "v1.2.3".
   INSECURE_COOKIES  "true" to send the session cookie over plain HTTP when the
                     app isn't reached as localhost (not needed behind HTTPS).
+  PUBLIC_URL        The app's address, e.g. "https://cookbook.example.com", so
+                    setup links are printed in full.
 `
 
 func main() {
@@ -63,9 +68,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	case cmd == "backup" && len(args) == 1:
 		err = backup(dataDir, args[0], stdout, stderr)
 	case cmd == "user" && len(args) == 2 && args[0] == "add":
-		err = userAdd(dataDir, args[1], stdin, stderr)
-	case cmd == "user" && len(args) == 2 && args[0] == "passwd":
-		err = userPasswd(dataDir, args[1], stdin, stderr)
+		err = userAdd(dataDir, args[1], stdout, stderr)
+	case cmd == "user" && len(args) == 3 && args[0] == "add" && args[2] == "--password-stdin":
+		err = userAddWithPassword(dataDir, args[1], stdin, stderr)
+	case cmd == "user" && len(args) == 2 && args[0] == "reset":
+		err = userReset(dataDir, args[1], stdout, stderr)
 	case cmd == "user" && len(args) == 1 && args[0] == "list":
 		err = userList(dataDir, stdout)
 	case cmd == "user" && len(args) == 2 && args[0] == "remove":
@@ -100,7 +107,7 @@ func serve(addr, dataDir string) error {
 
 	mux := http.NewServeMux()
 	opts := api.Options{InsecureCookies: os.Getenv("INSECURE_COOKIES") == "true"}
-	mux.Handle("/api/", api.NewServer(st, auth.NewService(st, st, time.Now), opts))
+	mux.Handle("/api/", api.NewServer(st, auth.NewService(st, time.Now), opts))
 	if ui := web.Handler(); ui != nil {
 		mux.Handle("/", ui)
 	}

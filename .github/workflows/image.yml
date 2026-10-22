@@ -91,8 +91,14 @@ jobs:
           # The UI is embedded, including for client-side routes.
           curl -sf http://localhost:8080/recipes/anything | grep -q '<title>Family Cookbook</title>'
           # Accounts are created with the admin command; without a session, the API refuses.
-          docker exec -i cookbook cookbook user add "$E2E_USERNAME" <<< "$E2E_PASSWORD"
-          docker exec -i cookbook cookbook user add "$E2E_FRIEND_USERNAME" <<< "$E2E_FRIEND_PASSWORD"
+          docker exec -i cookbook cookbook user add "$E2E_USERNAME" --password-stdin <<< "$E2E_PASSWORD"
+          docker exec -i cookbook cookbook user add "$E2E_FRIEND_USERNAME" --password-stdin <<< "$E2E_FRIEND_PASSWORD"
+          # Accounts without a password get a one-time setup link; the e2e
+          # tests use one per phone project.
+          for project in android iphone; do
+            link=$(docker exec cookbook cookbook user add "e2e-newbie-$project")
+            echo "E2E_SETUP_LINK_${project^^}=$link" >> "$GITHUB_ENV"
+          done
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/cookbooks)" = 401
           curl -sf -c session.txt -X POST http://localhost:8080/api/session -H 'Content-Type: application/json' \
             -d "{\"username\":\"$E2E_USERNAME\",\"password\":\"$E2E_PASSWORD\"}"

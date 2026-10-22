@@ -117,8 +117,10 @@ type Member struct {
 
 // User is an account. Usernames are stored normalized (see package auth).
 type User struct {
-	ID           int64
-	Username     string
+	ID       int64
+	Username string
+	// PasswordHash is empty until the user has chosen a password with a
+	// setup link; until then, nobody can log in as them.
 	PasswordHash string
 	CreatedAt    time.Time
 }
@@ -140,7 +142,11 @@ type Users interface {
 	// ListUsers returns all users, sorted by username.
 	ListUsers(ctx context.Context) ([]User, error)
 	// SetPassword changes a user's password and ends all their sessions.
+	// An empty hash disables the password until a setup link is used.
 	SetPassword(ctx context.Context, username, passwordHash string) error
+	// ChangePassword changes a user's password and ends their sessions,
+	// except the one with keepSessionHash (the one making the change).
+	ChangePassword(ctx context.Context, userID int64, passwordHash, keepSessionHash string) error
 	// DeleteUser removes a user, their sessions and their memberships. Their
 	// cookbooks never become admin-less: a cookbook they were the only member
 	// of is deleted, and if they were the last admin, the longest-standing
@@ -165,4 +171,15 @@ type Sessions interface {
 	ExtendSession(ctx context.Context, tokenHash string, expiresAt time.Time) error
 	DeleteSession(ctx context.Context, tokenHash string) error
 	DeleteExpiredSessions(ctx context.Context, now time.Time) error
+}
+
+// SetupTokens persists one-time links for choosing a password. Only hashes
+// of the tokens are stored.
+type SetupTokens interface {
+	// CreateSetupToken stores a link for the user, replacing any earlier one.
+	CreateSetupToken(ctx context.Context, tokenHash string, userID int64, at, expiresAt time.Time) error
+	// UseSetupToken sets the password of the token's user, deletes the
+	// token and ends the user's sessions, all at once. It returns ErrNotFound
+	// for unknown, used or expired tokens.
+	UseSetupToken(ctx context.Context, tokenHash, passwordHash string, now time.Time) (User, error)
 }

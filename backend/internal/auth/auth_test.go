@@ -34,7 +34,7 @@ func newService(t *testing.T) (*Service, *sqlite.Store, *clock) {
 	if err := st.CreateUser(context.Background(), "joan", hash, c.now()); err != nil {
 		t.Fatal(err)
 	}
-	return NewService(st, st, c.now), st, c
+	return NewService(st, c.now), st, c
 }
 
 func TestPasswordHashing(t *testing.T) {
@@ -227,5 +227,153 @@ func TestPasswordResetAndRemovalEndSessions(t *testing.T) {
 	}
 	if _, _, err := s.Authenticate(ctx, token); !errors.Is(err, ErrNoSession) {
 		t.Errorf("after removing the user: err = %v, want ErrNoSession", err)
+	}
+}
+
+func TestSetupLinks(t *testing.T) {
+	s, st, c := newService(t)
+	ctx := context.Background()
+	if err := st.CreateUser(ctx, "anna", "", c.now()); err != nil { // as `cookbook user add` does
+		t.Fatal(err)
+	}
+
+	// No password yet: nothing logs in, not even an empty one.
+	for _, p := range []string{"", "anything at all"} {
+		if _, _, err := s.LogIn(ctx, "anna", p); !errors.Is(err, ErrInvalidCredentials) {
+			t.Errorf("LogIn(%q) err = %v, want ErrInvalidCredentials", p, err)
+		}
+	}
+
+	old, _, err := s.IssueSetupLink(ctx, "Anna")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, expires, err := s.IssueSetupLink(ctx, "anna") // replaces the first link
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !expires.Equal(c.now().Add(SetupLinkTTL)) {
+		t.Errorf("expires %v", expires)
+	}
+	if _, _, err := s.CompleteSetup(ctx, old, "annas new password"); !errors.Is(err, ErrInvalidLink) {
+		t.Errorf("replaced link: err = %v, want ErrInvalidLink", err)
+	}
+
+	var bad *BadPasswordError
+	if _, _, err := s.CompleteSetup(ctx, token, "short"); !errors.As(err, &bad) {
+		t.Errorf("weak password: err = %v, want BadPasswordError", err)
+	}
+
+	sessionToken, sess, err := s.CompleteSetup(ctx, token, "annas new password")
+	if err != nil || sess.Username != "anna" || sessionToken == "" {
+		t.Fatalf("CompleteSetup = %+v, %v", sess, err)
+	}
+	if _, _, err := s.Authenticate(ctx, sessionToken); err != nil {
+		t.Errorf("setting the password should log in: %v", err)
+	}
+	if _, _, err := s.LogIn(ctx, "anna", "annas new password"); err != nil {
+		t.Errorf("can't log in with the new password: %v", err)
+	}
+	if _, _, err := s.CompleteSetup(ctx, token, "another password!"); !errors.Is(err, ErrInvalidLink) {
+		t.Errorf("reusing the link: err = %v, want ErrInvalidLink", err)
+	}
+	if _, _, err := s.IssueSetupLink(ctx, "nobody"); !errors.Is(err, ErrNoSuchUser) {
+		t.Errorf("link for an unknown user: err = %v", err)
+	}
+}
+
+func TestSetupLinksExpire(t *testing.T) {
+	s, _, c := newService(t)
+	ctx := context.Background()
+	token, _, err := s.IssueSetupLink(ctx, "joan")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c.advance(SetupLinkTTL)
+
+	if _, _, err := s.CompleteSetup(ctx, token, "a fresh password"); !errors.Is(err, ErrInvalidLink) {
+		t.Errorf("expired link: err = %v, want ErrInvalidLink", err)
+	}
+	if _, _, err := s.LogIn(ctx, "joan", password); err != nil {
+		t.Errorf("an unused link shouldn't affect the password: %v", err)
+	}
+}
+
+func TestResetPassword(t *testing.T) {
+	s, _, _ := newService(t)
+	ctx := context.Background()
+	session, _, err := s.LogIn(ctx, "joan", password)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	token, _, err := s.ResetPassword(ctx, "joan")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := s.LogIn(ctx, "joan", password); !errors.Is(err, ErrInvalidCredentials) {
+		t.Errorf("old password after reset: err = %v", err)
+	}
+	if _, _, err := s.Authenticate(ctx, session); !errors.Is(err, ErrNoSession) {
+		t.Errorf("session after reset: err = %v, want ErrNoSession", err)
+	}
+	if _, _, err := s.CompleteSetup(ctx, token, "a fresh password"); err != nil {
+		t.Errorf("setting a new password: %v", err)
+	}
+	if _, _, err := s.ResetPassword(ctx, "nobody"); !errors.Is(err, ErrNoSuchUser) {
+		t.Errorf("unknown user: err = %v", err)
+	}
+}
+
+func TestChangePasswordKeepsOnlyThisSession(t *testing.T) {
+	s, _, _ := newService(t)
+	ctx := context.Background()
+	phone, _, err := s.LogIn(ctx, "joan", password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	laptop, sess, err := s.LogIn(ctx, "joan", password)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.ChangePassword(ctx, sess, "wrong password", "a brand new password"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Errorf("wrong current password: err = %v", err)
+	}
+	var bad *BadPasswordError
+	if err := s.ChangePassword(ctx, sess, password, "short"); !errors.As(err, &bad) {
+		t.Errorf("weak new password: err = %v", err)
+	}
+	if err := s.ChangePassword(ctx, sess, password, "a brand new password"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := s.Authenticate(ctx, laptop); err != nil {
+		t.Errorf("the session that changed the password ended: %v", err)
+	}
+	if _, _, err := s.Authenticate(ctx, phone); !errors.Is(err, ErrNoSession) {
+		t.Errorf("other session: err = %v, want ErrNoSession", err)
+	}
+	if _, _, err := s.LogIn(ctx, "joan", "a brand new password"); err != nil {
+		t.Errorf("new password: %v", err)
+	}
+}
+
+func TestWrongCurrentPasswordsCountTowardsTheLockout(t *testing.T) {
+	s, _, _ := newService(t)
+	ctx := context.Background()
+	_, sess, err := s.LogIn(ctx, "joan", password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range maxFailures {
+		_ = s.ChangePassword(ctx, sess, "guess", "a brand new password")
+	}
+
+	var tooMany *TooManyAttemptsError
+	if err := s.ChangePassword(ctx, sess, password, "a brand new password"); !errors.As(err, &tooMany) {
+		t.Errorf("err = %v, want TooManyAttemptsError", err)
 	}
 }

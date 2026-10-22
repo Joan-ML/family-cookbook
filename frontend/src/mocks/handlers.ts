@@ -10,6 +10,8 @@ import type {
   Member,
   MemberInput,
   MemberList,
+  PasswordChange,
+  PasswordSetup,
   Recipe,
   RecipeInput,
   RecipeList,
@@ -160,7 +162,12 @@ function normalize(input: RecipeInput): RecipeInput | ApiError {
   }
 }
 
-const publicPaths = ['/api/health', '/api/info', '/api/session']
+const publicPaths = ['/api/health', '/api/info', '/api/session', '/api/password/setup']
+
+/** The only setup link token the mock accepts; it's for user "newbie". */
+export const mockSetupToken = 'valid-setup-token'
+const passwordRule = (p: string) =>
+  p.length < 10 ? HttpResponse.json<ApiError>({ message: 'passwords need at least 10 characters' }, { status: 400 }) : null
 
 export const handlers = [
   // Like the real server: endpoints need a session unless they're public.
@@ -183,6 +190,28 @@ export const handlers = [
     return new HttpResponse(null, { status: 204 })
   }),
   http.get('*/api/me', () => HttpResponse.json<User>({ username: sessionUser! })),
+
+  http.post<never, PasswordSetup, User | ApiError>('*/api/password/setup', async ({ request }) => {
+    const { token, password } = await request.json()
+    const weak = passwordRule(password)
+    if (weak) return weak
+    if (token !== mockSetupToken) {
+      return HttpResponse.json<ApiError>(
+        { message: 'this link is invalid, already used or expired; ask for a new one' },
+        { status: 400 },
+      )
+    }
+    sessionUser = 'newbie'
+    return HttpResponse.json<User>({ username: sessionUser })
+  }),
+
+  http.put<never, PasswordChange, ApiError | null>('*/api/me/password', async ({ request }) => {
+    const { currentPassword, newPassword } = await request.json()
+    if (currentPassword !== mockPassword) {
+      return HttpResponse.json<ApiError>({ message: 'the current password is wrong' }, { status: 400 })
+    }
+    return passwordRule(newPassword) ?? new HttpResponse(null, { status: 204 })
+  }),
 
   http.get('*/api/health', () => HttpResponse.json<Health>({ status: 'ok' })),
   http.get('*/api/info', () => HttpResponse.json<Info>({ version: 'v0.0.0-mock', commit: 'mock' })),

@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import { getResponse } from 'msw'
 import { http, HttpResponse } from 'msw/http'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { handlers, mockPassword, setMockSession } from './mocks/handlers'
+import { handlers, mockPassword, mockSetupToken, setMockSession } from './mocks/handlers'
 import { server } from './mocks/node'
 import { renderApp } from './test/renderApp'
 
@@ -542,5 +542,100 @@ describe('servings', () => {
 
     await screen.findByRole('heading', { level: 1, name: 'Paella' })
     expect(screen.queryByText(/^Serves/)).not.toBeInTheDocument()
+  })
+})
+
+describe('setup links', () => {
+  afterEach(() => window.history.replaceState(null, '', '/'))
+
+  // A setup link: /set-password#<token>. The router doesn't see the part
+  // after "#", so the test puts it in the browser's address.
+  function openSetupLink(token: string) {
+    window.history.replaceState(null, '', `/set-password#${token}`)
+    return renderApp('/set-password')
+  }
+
+  test('choosing a password logs in, and removes the token from the address', async () => {
+    setMockSession(null)
+    const { user, location } = openSetupLink(mockSetupToken)
+
+    expect(await screen.findByRole('heading', { name: 'Choose your password' })).toBeInTheDocument()
+    expect(window.location.hash).toBe('')
+    await user.type(screen.getByLabelText('New password'), 'my own password')
+    await user.type(screen.getByLabelText('Repeat it'), 'my own password')
+    await user.click(screen.getByRole('button', { name: 'Save and log in' }))
+
+    await waitFor(() => expect(location()).toBe('/'))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Cookbooks' })).toBeInTheDocument()
+    expect(screen.getByRole('banner')).toHaveTextContent('newbie · Log out')
+  })
+
+  test('mismatched passwords are caught before sending', async () => {
+    const { user } = openSetupLink(mockSetupToken)
+
+    await user.type(await screen.findByLabelText('New password'), 'my own password')
+    await user.type(screen.getByLabelText('Repeat it'), 'my own pasword')
+    await user.click(screen.getByRole('button', { name: 'Save and log in' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("The passwords don't match.")
+  })
+
+  test('an invalid or used link says to ask for a new one', async () => {
+    const { user } = openSetupLink('used-up-token')
+
+    await user.type(await screen.findByLabelText('New password'), 'my own password')
+    await user.type(screen.getByLabelText('Repeat it'), 'my own password')
+    await user.click(screen.getByRole('button', { name: 'Save and log in' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('ask for a new one')
+  })
+
+  test('a link without its token explains what is wrong', async () => {
+    window.history.replaceState(null, '', '/set-password')
+    renderApp('/set-password')
+
+    expect(await screen.findByRole('heading', { name: 'Incomplete link' })).toBeInTheDocument()
+  })
+})
+
+describe('account', () => {
+  async function fillPasswords(user: ReturnType<typeof renderApp>['user'], current: string, next: string, repeat = next) {
+    await user.type(await screen.findByLabelText('Current password'), current)
+    await user.type(screen.getByLabelText(/^New password/), next)
+    await user.type(screen.getByLabelText('Repeat the new password'), repeat)
+    await user.click(screen.getByRole('button', { name: 'Change password' }))
+  }
+
+  test('your name in the header opens your account', async () => {
+    const { user, location } = renderApp('/')
+
+    await user.click(await within(screen.getByRole('banner')).findByRole('link', { name: 'dev' }))
+
+    expect(location()).toBe('/account')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Your account' })).toBeInTheDocument()
+  })
+
+  test('changing your password', async () => {
+    const { user } = renderApp('/account')
+
+    await fillPasswords(user, mockPassword, 'a brand new password')
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Password changed. Other devices have been logged out.')
+    expect(screen.getByLabelText('Current password')).toHaveValue('')
+  })
+
+  test('a wrong current password, or mismatched new ones, explain why not', async () => {
+    const { user } = renderApp('/account')
+
+    await fillPasswords(user, 'not it', 'a brand new password')
+    expect(await screen.findByRole('alert')).toHaveTextContent('the current password is wrong')
+    // Still logged in: a wrong password isn't an ended session.
+    expect(screen.getByRole('heading', { level: 1, name: 'Your account' })).toBeInTheDocument()
+
+    await user.clear(screen.getByLabelText('Current password'))
+    await user.clear(screen.getByLabelText(/^New password/))
+    await user.clear(screen.getByLabelText('Repeat the new password'))
+    await fillPasswords(user, mockPassword, 'a brand new password', 'a brand new pasword')
+    expect(await screen.findByRole('alert')).toHaveTextContent("The new passwords don't match.")
   })
 })
