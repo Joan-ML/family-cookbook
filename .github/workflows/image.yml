@@ -73,9 +73,11 @@ jobs:
         env:
           IMAGE: ${{ steps.meta.outputs.tags }}
           COMMIT: ${{ steps.commit.outputs.short }}
-          # A throwaway account in a throwaway container, also used by the e2e tests.
+          # Throwaway accounts in a throwaway container, also used by the e2e tests.
           E2E_USERNAME: e2e
           E2E_PASSWORD: e2e test password
+          E2E_FRIEND_USERNAME: e2e-friend
+          E2E_FRIEND_PASSWORD: e2e friend password
         run: |
           image=$(head -n1 <<< "$IMAGE")
           docker run -d --name cookbook -p 8080:8080 -v cookbook-data:/data \
@@ -90,6 +92,7 @@ jobs:
           curl -sf http://localhost:8080/recipes/anything | grep -q '<title>Family Cookbook</title>'
           # Accounts are created with the admin command; without a session, the API refuses.
           docker exec -i cookbook cookbook user add "$E2E_USERNAME" <<< "$E2E_PASSWORD"
+          docker exec -i cookbook cookbook user add "$E2E_FRIEND_USERNAME" <<< "$E2E_FRIEND_PASSWORD"
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/cookbooks)" = 401
           curl -sf -c session.txt -X POST http://localhost:8080/api/session -H 'Content-Type: application/json' \
             -d "{\"username\":\"$E2E_USERNAME\",\"password\":\"$E2E_PASSWORD\"}"
@@ -117,6 +120,8 @@ jobs:
           BASE_URL: http://localhost:8080
           E2E_USERNAME: e2e
           E2E_PASSWORD: e2e test password
+          E2E_FRIEND_USERNAME: e2e-friend
+          E2E_FRIEND_PASSWORD: e2e friend password
         run: |
           npm ci
           npm run typecheck

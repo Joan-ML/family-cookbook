@@ -96,7 +96,9 @@ The app is self-hosted for family and friends, and may be reachable from the int
 - **Cookbooks are private to their members.** For anyone else, a cookbook and its recipes don't exist: the API answers `404`, not `403`, so cookbooks can't be discovered.
 - **Removing an account never leaves a cookbook without an admin.** Cookbooks the user was the only member of are deleted with their recipes; where they were the last admin, the longest-standing remaining member becomes admin. `cookbook user remove` lists what it changed. Recipes keep showing who created and last edited them, as history, even after that account is gone.
 
-The work is split into increments, each starting with its API contract: 1. authentication (done), 2. cookbooks and membership (done), 3. member management: inviting by username, changing roles, removing members and leaving.
+- **Members & settings.** Every member can see who's in a cookbook and leave it. Admins add existing accounts by username (they're added straight away, with no invitation to accept), change roles and remove members. Changes that would leave a cookbook without an admin are refused: the last admin must first make someone else admin, or delete the cookbook.
+
+The work was split into increments, each starting with its API contract: 1. authentication, 2. cookbooks and membership, 3. member management. All three are done.
 
 Accounts are managed with subcommands of the same binary, which run against the same database as the server (in Docker: `docker exec -it <container> cookbook user add <name>`):
 
@@ -190,12 +192,13 @@ npm run gen:api       # regenerate types after editing api/openapi.yaml
 npm run check:api     # fail if generated types are stale
 ```
 
-**End-to-end tests** (Node.js 22+), from `e2e/`. They drive the real app in phone-sized Chromium (Android) and WebKit (iPhone), through the real server and database. CI runs them against every image before publishing it. Each test creates uniquely named recipes and deletes them afterwards, so any running instance works, but prefer a scratch one. The tests log in as `E2E_USERNAME` / `E2E_PASSWORD` (default `e2e` / `e2e test password`), which must exist on that server:
+**End-to-end tests** (Node.js 22+), from `e2e/`. They drive the real app in phone-sized Chromium (Android) and WebKit (iPhone), through the real server and database. CI runs them against every image before publishing it. Each test creates uniquely named recipes and deletes them afterwards, so any running instance works, but prefer a scratch one. The tests log in as two accounts, which must exist on that server: `E2E_USERNAME` / `E2E_PASSWORD` (default `e2e` / `e2e test password`), and a second person for the sharing tests, `E2E_FRIEND_USERNAME` / `E2E_FRIEND_PASSWORD` (default `e2e-friend` / `e2e friend password`):
 
 ```sh
 npm install                              # once
 npx playwright install chromium webkit   # once; downloads browsers to ~/.cache/ms-playwright
-(cd ../backend && echo 'e2e test password' | go run ./cmd/cookbook user add e2e)  # once per database
+(cd ../backend && echo 'e2e test password' | go run ./cmd/cookbook user add e2e)            # once per database
+(cd ../backend && echo 'e2e friend password' | go run ./cmd/cookbook user add e2e-friend)
 BASE_URL=http://localhost:8080 npx playwright test          # against the image or `go run`
 BASE_URL=http://localhost:5173 npx playwright test          # or through Vite
 npx playwright test --project=android    # one browser only
