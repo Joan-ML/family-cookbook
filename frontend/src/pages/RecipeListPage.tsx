@@ -57,11 +57,9 @@ export function RecipeListPage({ cookbookId }: { cookbookId: string }) {
           New recipe
         </Link>
       </div>
-      {cookbook.role === 'admin' && (
-        <p className="cookbook-meta">
-          <Link href={paths.cookbookSettings(cookbook.id)}>Cookbook settings</Link>
-        </p>
-      )}
+      <p className="cookbook-meta">
+        <Link href={paths.cookbookSettings(cookbook.id)}>Members & settings</Link>
+      </p>
 
       <input
         type="search"

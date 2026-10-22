@@ -131,6 +131,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cookbooks/{cookbookId}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cookbookId: components["parameters"]["CookbookId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Who's in a cookbook
+         * @description Every member can see the members and their roles.
+         */
+        get: operations["listMembers"];
+        put?: never;
+        /**
+         * Add a user to a cookbook (admins only)
+         * @description Adds an existing account straight away; there is no invitation to
+         *     accept. The cookbook then appears in their list.
+         */
+        post: operations["addMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cookbooks/{cookbookId}/members/{username}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cookbookId: components["parameters"]["CookbookId"];
+                username: components["parameters"]["Username"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a member's role (admins only)
+         * @description Refused with 409 if it would leave the cookbook without an admin.
+         */
+        put: operations["changeRole"];
+        post?: never;
+        /**
+         * Remove a member, or leave
+         * @description Admins can remove anyone; any member can remove themselves, which is
+         *     leaving. Refused with 409 if it would leave the cookbook without an
+         *     admin: the last admin must first make someone else admin, or delete
+         *     the cookbook.
+         */
+        delete: operations["removeMember"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cookbooks/{cookbookId}/recipes": {
         parameters: {
             query?: never;
@@ -201,6 +258,22 @@ export interface components {
          * @enum {string}
          */
         Role: "admin" | "editor";
+        Member: {
+            username: string;
+            role: components["schemas"]["Role"];
+            /** Format: date-time */
+            joinedAt: string;
+        };
+        MemberList: {
+            items: components["schemas"]["Member"][];
+        };
+        MemberInput: {
+            username: string;
+            role: components["schemas"]["Role"];
+        };
+        RoleInput: {
+            role: components["schemas"]["Role"];
+        };
         CookbookInput: {
             name: string;
         };
@@ -291,6 +364,18 @@ export interface components {
             };
         };
         /**
+         * @description The change conflicts with the cookbook's members: the user is already
+         *     a member, or the cookbook would be left without an admin.
+         */
+        Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
          * @description The resource does not exist, or belongs to a cookbook you're not a
          *     member of: the two are indistinguishable, so cookbooks can't be discovered.
          */
@@ -325,6 +410,7 @@ export interface components {
     };
     parameters: {
         CookbookId: string;
+        Username: string;
         RecipeId: string;
     };
     requestBodies: never;
@@ -575,6 +661,126 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cookbookId: components["parameters"]["CookbookId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The members, sorted by username. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    addMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cookbookId: components["parameters"]["CookbookId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemberInput"];
+            };
+        };
+        responses: {
+            /** @description The new member. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Member"];
+                };
+            };
+            /** @description Malformed request, or no account has that username. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    changeRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cookbookId: components["parameters"]["CookbookId"];
+                username: components["parameters"]["Username"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleInput"];
+            };
+        };
+        responses: {
+            /** @description The member with their new role. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Member"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    removeMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cookbookId: components["parameters"]["CookbookId"];
+                username: components["parameters"]["Username"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listRecipes: {

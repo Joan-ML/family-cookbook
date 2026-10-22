@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Family Cookbook API
-  version: 0.4.0
+  version: 0.5.0
   description: |
     Contract between the Go backend and the React frontend.
     Backend tests validate real responses against this file, and both sides
@@ -211,6 +211,109 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /cookbooks/{cookbookId}/members:
+    parameters:
+      - $ref: "#/components/parameters/CookbookId"
+    get:
+      operationId: listMembers
+      summary: Who's in a cookbook
+      description: Every member can see the members and their roles.
+      responses:
+        "200":
+          description: The members, sorted by username.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: addMember
+      summary: Add a user to a cookbook (admins only)
+      description: |
+        Adds an existing account straight away; there is no invitation to
+        accept. The cookbook then appears in their list.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberInput"
+      responses:
+        "201":
+          description: The new member.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "400":
+          description: Malformed request, or no account has that username.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /cookbooks/{cookbookId}/members/{username}:
+    parameters:
+      - $ref: "#/components/parameters/CookbookId"
+      - $ref: "#/components/parameters/Username"
+    put:
+      operationId: changeRole
+      summary: Change a member's role (admins only)
+      description: Refused with 409 if it would leave the cookbook without an admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleInput"
+      responses:
+        "200":
+          description: The member with their new role.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: removeMember
+      summary: Remove a member, or leave
+      description: |
+        Admins can remove anyone; any member can remove themselves, which is
+        leaving. Refused with 409 if it would leave the cookbook without an
+        admin: the last admin must first make someone else admin, or delete
+        the cookbook.
+      responses:
+        "204":
+          description: Removed.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /cookbooks/{cookbookId}/recipes:
     parameters:
       - $ref: "#/components/parameters/CookbookId"
@@ -325,6 +428,12 @@ components:
       required: true
       schema:
         type: string
+    Username:
+      name: username
+      in: path
+      required: true
+      schema:
+        type: string
     RecipeId:
       name: recipeId
       in: path
@@ -347,6 +456,14 @@ components:
             $ref: "#/components/schemas/Error"
     Forbidden:
       description: You're a member, but your role doesn't allow this.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: |
+        The change conflicts with the cookbook's members: the user is already
+        a member, or the cookbook would be left without an admin.
       content:
         application/json:
           schema:
@@ -424,6 +541,45 @@ components:
         delete it; editors create, edit and delete its recipes.
       type: string
       enum: [admin, editor]
+
+    Member:
+      type: object
+      required: [username, role, joinedAt]
+      properties:
+        username:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+        joinedAt:
+          type: string
+          format: date-time
+
+    MemberList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Member"
+
+    MemberInput:
+      type: object
+      required: [username, role]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 64
+        role:
+          $ref: "#/components/schemas/Role"
+
+    RoleInput:
+      type: object
+      required: [role]
+      properties:
+        role:
+          $ref: "#/components/schemas/Role"
 
     CookbookInput:
       type: object

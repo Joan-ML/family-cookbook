@@ -169,3 +169,98 @@ func expectOneRow(res sql.Result, err error) error {
 	}
 	return nil
 }
+
+func (s *Store) ListMembers(ctx context.Context, cookbookID string) ([]store.Member, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT u.username, m.role, m.joined_at
+		FROM memberships m JOIN users u ON u.id = m.user_id
+		WHERE m.cookbook_id = ?
+		ORDER BY u.username`, cookbookID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	members := []store.Member{}
+	for rows.Next() {
+		var m store.Member
+		var joinedAt string
+		if err := rows.Scan(&m.Username, &m.Role, &joinedAt); err != nil {
+			return nil, err
+		}
+		if m.JoinedAt, err = time.Parse(time.RFC3339Nano, joinedAt); err != nil {
+			return nil, err
+		}
+		members = append(members, m)
+	}
+	return members, rows.Err()
+}
+
+func (s *Store) SetRole(ctx context.Context, cookbookID string, userID int64, role store.Role) (store.Member, error) {
+	var m store.Member
+	err := s.withTx(ctx, func(tx *sql.Tx) error {
+		current, err := memberRole(ctx, tx, cookbookID, userID)
+		if err != nil {
+			return err
+		}
+		if current == store.RoleAdmin && role != store.RoleAdmin {
+			if err := ensureAnotherAdmin(ctx, tx, cookbookID, userID); err != nil {
+				return err
+			}
+		}
+		var joinedAt string
+		err = tx.QueryRowContext(ctx, `
+			UPDATE memberships SET role = ? WHERE cookbook_id = ? AND user_id = ?
+			RETURNING (SELECT username FROM users WHERE id = user_id), role, joined_at`,
+			role, cookbookID, userID).Scan(&m.Username, &m.Role, &joinedAt)
+		if err != nil {
+			return err
+		}
+		m.JoinedAt, err = time.Parse(time.RFC3339Nano, joinedAt)
+		return err
+	})
+	return m, err
+}
+
+func (s *Store) RemoveMember(ctx context.Context, cookbookID string, userID int64) error {
+	return s.withTx(ctx, func(tx *sql.Tx) error {
+		current, err := memberRole(ctx, tx, cookbookID, userID)
+		if err != nil {
+			return err
+		}
+		if current == store.RoleAdmin {
+			if err := ensureAnotherAdmin(ctx, tx, cookbookID, userID); err != nil {
+				return err
+			}
+		}
+		_, err = tx.ExecContext(ctx, `DELETE FROM memberships WHERE cookbook_id = ? AND user_id = ?`, cookbookID, userID)
+		return err
+	})
+}
+
+// memberRole returns a member's role, or ErrNotFound if they aren't one.
+func memberRole(ctx context.Context, tx *sql.Tx, cookbookID string, userID int64) (store.Role, error) {
+	var role store.Role
+	err := tx.QueryRowContext(ctx,
+		`SELECT role FROM memberships WHERE cookbook_id = ? AND user_id = ?`, cookbookID, userID).Scan(&role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", store.ErrNotFound
+	}
+	return role, err
+}
+
+// ensureAnotherAdmin returns ErrLastAdmin unless the cookbook has an admin
+// besides userID. It runs in the same transaction as the change it guards,
+// so two admins demoting each other at once can't both succeed.
+func ensureAnotherAdmin(ctx context.Context, tx *sql.Tx, cookbookID string, userID int64) error {
+	var others int
+	err := tx.QueryRowContext(ctx, `
+		SELECT count(*) FROM memberships
+		WHERE cookbook_id = ? AND user_id != ? AND role = 'admin'`, cookbookID, userID).Scan(&others)
+	if err != nil {
+		return err
+	}
+	if others == 0 {
+		return store.ErrLastAdmin
+	}
+	return nil
+}

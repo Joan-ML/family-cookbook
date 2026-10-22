@@ -38,8 +38,11 @@ var (
 // pending migrations.
 func Open(path string) (*Store, error) {
 	// WAL and a busy timeout let the server and admin commands share the file.
+	// Transactions take the write lock when they start (BEGIN IMMEDIATE), so
+	// concurrent read-then-write transactions queue up and each sees the
+	// previous one's changes, rather than failing with "database is locked".
 	dsn := "file:" + (&url.URL{Path: path}).EscapedPath() +
-		"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
+		"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_txlock=immediate"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err

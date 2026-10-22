@@ -14,6 +14,10 @@ var ErrNotFound = errors.New("not found")
 // ErrExists is returned when creating something that already exists.
 var ErrExists = errors.New("already exists")
 
+// ErrLastAdmin is returned when a change would leave a cookbook without an
+// admin.
+var ErrLastAdmin = errors.New("a cookbook needs at least one admin")
+
 // RecipeContent holds the fields of a recipe that users edit.
 type RecipeContent struct {
 	Name        string
@@ -93,6 +97,21 @@ type Cookbooks interface {
 	DeleteCookbook(ctx context.Context, id string) error
 	// AddMember adds a user to a cookbook, or returns ErrExists.
 	AddMember(ctx context.Context, cookbookID string, userID int64, role Role, at time.Time) error
+	// ListMembers returns a cookbook's members, sorted by username.
+	ListMembers(ctx context.Context, cookbookID string) ([]Member, error)
+	// SetRole changes a member's role. It returns ErrNotFound if the user
+	// isn't a member, and ErrLastAdmin if no admin would remain.
+	SetRole(ctx context.Context, cookbookID string, userID int64, role Role) (Member, error)
+	// RemoveMember removes a member. It returns ErrNotFound if the user
+	// isn't a member, and ErrLastAdmin if no admin would remain.
+	RemoveMember(ctx context.Context, cookbookID string, userID int64) error
+}
+
+// Member is a user's membership of a cookbook.
+type Member struct {
+	Username string
+	Role     Role
+	JoinedAt time.Time
 }
 
 // User is an account. Usernames are stored normalized (see package auth).

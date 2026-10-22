@@ -1,44 +1,53 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useLocation } from 'wouter'
-import type { Cookbook } from '../api/client'
+import type { Cookbook, Member } from '../api/client'
 import { deleteCookbook, getCookbook, renameCookbook } from '../api/cookbooks'
+import { listMembers } from '../api/members'
 import { listRecipes } from '../api/recipes'
+import { useAuth } from '../auth'
 import { Loading, LoadError } from '../components'
 import { paths } from '../paths'
 import { useLoad } from '../useLoad'
+import { MembersSection } from './MembersSection'
 import { NotFound } from './NotFound'
 
-/** Rename or delete a cookbook. Only its admins can. */
+/**
+ * Members & settings: every member sees who's in the cookbook and can leave;
+ * admins also manage members, rename the cookbook and delete it.
+ */
 export function CookbookSettingsPage({ cookbookId }: { cookbookId: string }) {
+  const { state } = useAuth()
   const page = useLoad(async () => {
     const cookbook = await getCookbook(cookbookId)
-    return cookbook && { cookbook, recipeCount: (await listRecipes(cookbookId)).length }
+    if (!cookbook) return null
+    const [members, recipes] = await Promise.all([listMembers(cookbookId), listRecipes(cookbookId)])
+    return { cookbook, members, recipeCount: recipes.length }
   }, cookbookId)
 
   if (page.status === 'loading') return <Loading />
   if (page.status === 'error') return <LoadError message={page.message} onRetry={page.reload} />
   if (!page.data) return <NotFound what="cookbook" />
-  return <Settings loaded={page.data.cookbook} recipeCount={page.data.recipeCount} />
+  const me = state.status === 'user' ? state.user.username : ''
+  return <Settings loaded={page.data.cookbook} members={page.data.members} recipeCount={page.data.recipeCount} me={me} />
 }
 
-function Settings({ loaded, recipeCount }: { loaded: Cookbook; recipeCount: number }) {
-  // Renaming updates this, so the back link and the delete confirmation
-  // use the current name.
-  const [cookbook, setCookbook] = useState(loaded)
+function Settings(props: { loaded: Cookbook; members: Member[]; recipeCount: number; me: string }) {
+  // Renaming updates this, so the back link and the confirmations use the
+  // current name.
+  const [cookbook, setCookbook] = useState(props.loaded)
 
   return (
     <>
       <Link className="back" href={paths.cookbook(cookbook.id)}>
         ← {cookbook.name}
       </Link>
-      <h1>Cookbook settings</h1>
-      {cookbook.role === 'admin' ? (
+      <h1>Members & settings</h1>
+      <MembersSection cookbook={cookbook} me={props.me} loaded={props.members} />
+      {cookbook.role === 'admin' && (
         <>
           <Rename cookbook={cookbook} onRenamed={setCookbook} />
-          <Delete cookbook={cookbook} recipeCount={recipeCount} />
+          <Delete cookbook={cookbook} recipeCount={props.recipeCount} />
         </>
-      ) : (
-        <p className="empty">Only the cookbook's admins can change its settings.</p>
       )}
     </>
   )
@@ -62,8 +71,9 @@ function Rename({ cookbook, onRenamed }: { cookbook: Cookbook; onRenamed: (c: Co
 
   return (
     <form className="settings-section" onSubmit={onSubmit}>
+      <h2>Name</h2>
       <label className="field">
-        <span>Name</span>
+        <span>Cookbook name</span>
         <div className="inline-field">
           <input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} required />
           <button type="submit" className="button primary" disabled={name.trim() === cookbook.name}>

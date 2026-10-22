@@ -7,9 +7,13 @@ import type {
   Credentials,
   Health,
   Info,
+  Member,
+  MemberInput,
+  MemberList,
   Recipe,
   RecipeInput,
   RecipeList,
+  RoleInput,
   User,
 } from '../api/client'
 
@@ -23,9 +27,11 @@ import type {
 // Sessions: the mock starts logged in as "dev". Any username logs in with
 // mockPassword; everything but the public endpoints answers 401 when logged out.
 //
-// Cookbooks: whoever is logged in is admin of "Family" and an editor of
-// "Friends". Unknown cookbooks are 404, recipes are only found in their own
-// cookbook, and editors get 403 for renaming or deleting, as on the server.
+// Cookbooks: whoever is logged in ("dev" by default) is admin of "Family"
+// (with anna as editor) and an editor of "Friends" (run by anna). Unknown
+// cookbooks are 404, recipes are only found in their own cookbook, editors get
+// 403 for admin actions, and no change may leave a cookbook without an admin,
+// as on the server. Accounts that exist: dev, anna, bob, carla.
 
 const mockUser = 'dev'
 export const mockPassword = 'cookbook password'
@@ -80,13 +86,34 @@ const seedCookbooks: Cookbook[] = [
 // Which cookbook each seed recipe is in.
 const seedPlacement: Record<string, string> = { pancakes: 'family', 'pa-amb-tomaquet': 'family', escalivada: 'friends' }
 
+const accounts = ['anna', 'bob', 'carla', mockUser]
+const joined = '2026-01-01T09:00:00Z'
+
 let cookbooks = new Map<string, Cookbook>()
+// Members by cookbook. The mock assumes the logged-in user is "dev".
+let members = new Map<string, Member[]>()
 let recipes = new Map<string, { cookbookId: string; recipe: Recipe }>()
 let nextId = 1
 
 /** Restores the seed data. Called between tests. */
 export function resetMockData() {
   cookbooks = new Map(seedCookbooks.map((c) => [c.id, structuredClone(c)]))
+  members = new Map([
+    [
+      'family',
+      [
+        { username: 'anna', role: 'editor', joinedAt: joined },
+        { username: mockUser, role: 'admin', joinedAt: joined },
+      ],
+    ],
+    [
+      'friends',
+      [
+        { username: 'anna', role: 'admin', joinedAt: joined },
+        { username: mockUser, role: 'editor', joinedAt: joined },
+      ],
+    ],
+  ])
   recipes = new Map(seed.map((r) => [r.id, { cookbookId: seedPlacement[r.id], recipe: structuredClone(r) }]))
   nextId = 1
   sessionUser = mockUser
@@ -100,6 +127,13 @@ const cookbookNotFound = () => HttpResponse.json<ApiError>({ message: 'cookbook 
 const recipeNotFound = () => HttpResponse.json<ApiError>({ message: 'recipe not found' }, { status: 404 })
 const adminsOnly = () =>
   HttpResponse.json<ApiError>({ message: "only the cookbook's admins can do this" }, { status: 403 })
+
+type MemberParams = { cookbookId: string; username: string }
+
+const conflict = (message: string) => HttpResponse.json<ApiError>({ message }, { status: 409 })
+const lastAdmin = 'a cookbook needs at least one admin: make someone else admin first'
+const otherAdmins = (cookbookId: string, username: string) =>
+  members.get(cookbookId)!.filter((m) => m.role === 'admin' && m.username !== username).length
 
 const inCookbook = (cookbookId: string) =>
   [...recipes.values()].filter((r) => r.cookbookId === cookbookId).map((r) => r.recipe)
@@ -169,6 +203,7 @@ export const handlers = [
       createdBy: sessionUser!,
     }
     cookbooks.set(cookbook.id, cookbook)
+    members.set(cookbook.id, [{ username: sessionUser!, role: 'admin', joinedAt: cookbook.createdAt }])
     return HttpResponse.json<Cookbook>(cookbook, {
       status: 201,
       headers: { Location: `/api/cookbooks/${cookbook.id}` },
@@ -196,6 +231,69 @@ export const handlers = [
     if (cookbook.role !== 'admin') return adminsOnly()
     cookbooks.delete(cookbook.id)
     for (const r of inCookbook(cookbook.id)) recipes.delete(r.id)
+    return new HttpResponse(null, { status: 204 })
+  }),
+
+  http.get<CookbookParams, never, MemberList | ApiError>('*/api/cookbooks/:cookbookId/members', ({ params }) => {
+    if (!cookbooks.has(params.cookbookId)) return cookbookNotFound()
+    return HttpResponse.json<MemberList>({ items: members.get(params.cookbookId)! })
+  }),
+
+  http.post<CookbookParams, MemberInput, Member | ApiError>(
+    '*/api/cookbooks/:cookbookId/members',
+    async ({ params, request }) => {
+      const cookbook = cookbooks.get(params.cookbookId)
+      if (!cookbook) return cookbookNotFound()
+      if (cookbook.role !== 'admin') return adminsOnly()
+      const { username, role } = await request.json()
+      const name = username.trim().toLowerCase()
+      if (!accounts.includes(name)) {
+        return HttpResponse.json<ApiError>({ message: `no account named "${username}"` }, { status: 400 })
+      }
+      const list = members.get(cookbook.id)!
+      if (list.some((m) => m.username === name)) return conflict(`${name} is already a member`)
+      const member: Member = { username: name, role, joinedAt: new Date().toISOString() }
+      members.set(cookbook.id, [...list, member].sort((a, b) => a.username.localeCompare(b.username)))
+      return HttpResponse.json<Member>(member, { status: 201 })
+    },
+  ),
+
+  http.put<MemberParams, RoleInput, Member | ApiError>(
+    '*/api/cookbooks/:cookbookId/members/:username',
+    async ({ params, request }) => {
+      const cookbook = cookbooks.get(params.cookbookId)
+      if (!cookbook) return cookbookNotFound()
+      if (cookbook.role !== 'admin') return adminsOnly()
+      const member = members.get(cookbook.id)!.find((m) => m.username === params.username)
+      if (!member) return HttpResponse.json<ApiError>({ message: 'member not found' }, { status: 404 })
+      const { role } = await request.json()
+      if (member.role === 'admin' && role !== 'admin' && otherAdmins(cookbook.id, member.username) === 0) {
+        return conflict(lastAdmin)
+      }
+      member.role = role
+      if (member.username === sessionUser) cookbook.role = role
+      return HttpResponse.json<Member>(member)
+    },
+  ),
+
+  http.delete<MemberParams, never, ApiError | null>('*/api/cookbooks/:cookbookId/members/:username', ({ params }) => {
+    const cookbook = cookbooks.get(params.cookbookId)
+    if (!cookbook) return cookbookNotFound()
+    const leaving = params.username === sessionUser
+    if (!leaving && cookbook.role !== 'admin') return adminsOnly()
+    const list = members.get(cookbook.id)!
+    const member = list.find((m) => m.username === params.username)
+    if (!member) return HttpResponse.json<ApiError>({ message: 'member not found' }, { status: 404 })
+    if (member.role === 'admin' && otherAdmins(cookbook.id, member.username) === 0) {
+      return conflict(
+        leaving
+          ? "you're this cookbook's only admin: make someone else admin before leaving, or delete the cookbook"
+          : lastAdmin,
+      )
+    }
+    members.set(cookbook.id, list.filter((m) => m !== member))
+    // Having left, the cookbook no longer exists for this user.
+    if (leaving) cookbooks.delete(cookbook.id)
     return new HttpResponse(null, { status: 204 })
   }),
 

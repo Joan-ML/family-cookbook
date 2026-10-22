@@ -29,10 +29,12 @@ const (
 	maxBodyBytes = 1 << 20
 )
 
-// Storage is what the API needs to persist: recipes and cookbooks.
+// Storage is what the API needs to persist: recipes, cookbooks, and the
+// accounts that can be added to them.
 type Storage interface {
 	store.Store
 	store.Cookbooks
+	store.Users
 }
 
 // server implements StrictServerInterface.

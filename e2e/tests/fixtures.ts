@@ -1,4 +1,4 @@
-import { test as base, expect, type APIRequestContext } from '@playwright/test'
+import { test as base, expect, type APIRequestContext, type Page } from '@playwright/test'
 
 export { expect }
 
@@ -36,6 +36,8 @@ type Fixtures = {
   createRecipe: (input: Partial<RecipeInput> & { name: string }) => Promise<Recipe>
   /** Deletes, at the end of the test, cookbooks the test created through the UI. */
   cleanUpCookbook: (name: string) => void
+  /** A page in a separate browser session, logged in as the friend account. */
+  friendPage: Page
 }
 
 export const test = base.extend<Fixtures>({
@@ -65,6 +67,22 @@ export const test = base.extend<Fixtures>({
       expect(res.status()).toBe(201)
       return (await res.json()) as Recipe
     })
+  },
+
+  friendPage: async ({ browser }, use, testInfo) => {
+    // Same phone as the test's project, but a different person.
+    const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = testInfo.project.use
+    const context = await browser.newContext({
+      viewport,
+      userAgent,
+      deviceScaleFactor,
+      isMobile,
+      hasTouch,
+      baseURL: testInfo.project.use.baseURL,
+      storageState: '.auth/friend.json',
+    })
+    await use(await context.newPage())
+    await context.close()
   },
 
   cleanUpCookbook: async ({ api }, use) => {

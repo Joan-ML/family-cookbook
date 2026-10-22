@@ -119,6 +119,29 @@ type Info struct {
 	Version *string `json:"version,omitempty"`
 }
 
+// Member defines model for Member.
+type Member struct {
+	JoinedAt time.Time `json:"joinedAt"`
+
+	// Role Your role in a cookbook. Admins also manage its members, rename it and
+	// delete it; editors create, edit and delete its recipes.
+	Role     Role   `json:"role"`
+	Username string `json:"username"`
+}
+
+// MemberInput defines model for MemberInput.
+type MemberInput struct {
+	// Role Your role in a cookbook. Admins also manage its members, rename it and
+	// delete it; editors create, edit and delete its recipes.
+	Role     Role   `json:"role"`
+	Username string `json:"username"`
+}
+
+// MemberList defines model for MemberList.
+type MemberList struct {
+	Items []Member `json:"items"`
+}
+
 // Recipe defines model for Recipe.
 type Recipe struct {
 	CreatedAt time.Time `json:"createdAt"`
@@ -179,6 +202,13 @@ type RecipeSummary struct {
 // delete it; editors create, edit and delete its recipes.
 type Role string
 
+// RoleInput defines model for RoleInput.
+type RoleInput struct {
+	// Role Your role in a cookbook. Admins also manage its members, rename it and
+	// delete it; editors create, edit and delete its recipes.
+	Role Role `json:"role"`
+}
+
 // User defines model for User.
 type User struct {
 	Username string `json:"username"`
@@ -190,8 +220,14 @@ type CookbookId = string
 // RecipeId defines model for RecipeId.
 type RecipeId = string
 
+// Username defines model for Username.
+type Username = string
+
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
+
+// Conflict defines model for Conflict.
+type Conflict = Error
 
 // Forbidden defines model for Forbidden.
 type Forbidden = Error
@@ -213,6 +249,12 @@ type CreateCookbookJSONRequestBody = CookbookInput
 
 // RenameCookbookJSONRequestBody defines body for RenameCookbook for application/json ContentType.
 type RenameCookbookJSONRequestBody = CookbookInput
+
+// AddMemberJSONRequestBody defines body for AddMember for application/json ContentType.
+type AddMemberJSONRequestBody = MemberInput
+
+// ChangeRoleJSONRequestBody defines body for ChangeRole for application/json ContentType.
+type ChangeRoleJSONRequestBody = RoleInput
 
 // CreateRecipeJSONRequestBody defines body for CreateRecipe for application/json ContentType.
 type CreateRecipeJSONRequestBody = RecipeInput
@@ -240,6 +282,18 @@ type ServerInterface interface {
 	// RenameCookbook Rename a cookbook (admins only)
 	// (PUT /cookbooks/{cookbookId})
 	RenameCookbook(w http.ResponseWriter, r *http.Request, cookbookId CookbookId)
+	// ListMembers Who's in a cookbook
+	// (GET /cookbooks/{cookbookId}/members)
+	ListMembers(w http.ResponseWriter, r *http.Request, cookbookId CookbookId)
+	// AddMember Add a user to a cookbook (admins only)
+	// (POST /cookbooks/{cookbookId}/members)
+	AddMember(w http.ResponseWriter, r *http.Request, cookbookId CookbookId)
+	// RemoveMember Remove a member, or leave
+	// (DELETE /cookbooks/{cookbookId}/members/{username})
+	RemoveMember(w http.ResponseWriter, r *http.Request, cookbookId CookbookId, username Username)
+	// ChangeRole Change a member's role (admins only)
+	// (PUT /cookbooks/{cookbookId}/members/{username})
+	ChangeRole(w http.ResponseWriter, r *http.Request, cookbookId CookbookId, username Username)
 	// ListRecipes List a cookbook's recipes
 	// (GET /cookbooks/{cookbookId}/recipes)
 	ListRecipes(w http.ResponseWriter, r *http.Request, cookbookId CookbookId)
@@ -378,6 +432,128 @@ func (siw *ServerInterfaceWrapper) RenameCookbook(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RenameCookbook(w, r, cookbookId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMembers operation middleware
+func (siw *ServerInterfaceWrapper) ListMembers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cookbookId" -------------
+	var cookbookId CookbookId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cookbookId", r.PathValue("cookbookId"), &cookbookId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cookbookId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMembers(w, r, cookbookId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddMember operation middleware
+func (siw *ServerInterfaceWrapper) AddMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cookbookId" -------------
+	var cookbookId CookbookId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cookbookId", r.PathValue("cookbookId"), &cookbookId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cookbookId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddMember(w, r, cookbookId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveMember operation middleware
+func (siw *ServerInterfaceWrapper) RemoveMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cookbookId" -------------
+	var cookbookId CookbookId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cookbookId", r.PathValue("cookbookId"), &cookbookId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cookbookId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "username" -------------
+	var username Username
+
+	err = runtime.BindStyledParameterWithOptions("simple", "username", r.PathValue("username"), &username, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveMember(w, r, cookbookId, username)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChangeRole operation middleware
+func (siw *ServerInterfaceWrapper) ChangeRole(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cookbookId" -------------
+	var cookbookId CookbookId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cookbookId", r.PathValue("cookbookId"), &cookbookId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cookbookId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "username" -------------
+	var username Username
+
+	err = runtime.BindStyledParameterWithOptions("simple", "username", r.PathValue("username"), &username, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChangeRole(w, r, cookbookId, username)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -744,6 +920,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/cookbooks/{cookbookId}", wrapper.DeleteCookbook)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cookbooks/{cookbookId}", wrapper.GetCookbook)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/cookbooks/{cookbookId}", wrapper.RenameCookbook)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cookbooks/{cookbookId}/members", wrapper.ListMembers)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cookbooks/{cookbookId}/members", wrapper.AddMember)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/cookbooks/{cookbookId}/members/{username}", wrapper.RemoveMember)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/cookbooks/{cookbookId}/members/{username}", wrapper.ChangeRole)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cookbooks/{cookbookId}/recipes", wrapper.ListRecipes)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cookbooks/{cookbookId}/recipes", wrapper.CreateRecipe)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/cookbooks/{cookbookId}/recipes/{recipeId}", wrapper.DeleteRecipe)
@@ -754,6 +934,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 }
 
 type BadRequestJSONResponse Error
+
+type ConflictJSONResponse Error
 
 type ForbiddenJSONResponse Error
 
@@ -1050,6 +1232,316 @@ func (response RenameCookbook404JSONResponse) VisitRenameCookbookResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMembersRequestObject struct {
+	CookbookId CookbookId `json:"cookbookId"`
+}
+
+type ListMembersResponseObject interface {
+	VisitListMembersResponse(w http.ResponseWriter) error
+}
+
+type ListMembers200JSONResponse MemberList
+
+func (response ListMembers200JSONResponse) VisitListMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMembers401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListMembers401JSONResponse) VisitListMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMembers404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListMembers404JSONResponse) VisitListMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddMemberRequestObject struct {
+	CookbookId CookbookId `json:"cookbookId"`
+	Body       *AddMemberJSONRequestBody
+}
+
+type AddMemberResponseObject interface {
+	VisitAddMemberResponse(w http.ResponseWriter) error
+}
+
+type AddMember201JSONResponse Member
+
+func (response AddMember201JSONResponse) VisitAddMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddMember400JSONResponse Error
+
+func (response AddMember400JSONResponse) VisitAddMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddMember401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response AddMember401JSONResponse) VisitAddMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddMember403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response AddMember403JSONResponse) VisitAddMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddMember404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response AddMember404JSONResponse) VisitAddMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddMember409JSONResponse struct{ ConflictJSONResponse }
+
+func (response AddMember409JSONResponse) VisitAddMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveMemberRequestObject struct {
+	CookbookId CookbookId `json:"cookbookId"`
+	Username   Username   `json:"username"`
+}
+
+type RemoveMemberResponseObject interface {
+	VisitRemoveMemberResponse(w http.ResponseWriter) error
+}
+
+type RemoveMember204Response struct {
+}
+
+func (response RemoveMember204Response) VisitRemoveMemberResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RemoveMember401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response RemoveMember401JSONResponse) VisitRemoveMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveMember403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RemoveMember403JSONResponse) VisitRemoveMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveMember404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RemoveMember404JSONResponse) VisitRemoveMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveMember409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RemoveMember409JSONResponse) VisitRemoveMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeRoleRequestObject struct {
+	CookbookId CookbookId `json:"cookbookId"`
+	Username   Username   `json:"username"`
+	Body       *ChangeRoleJSONRequestBody
+}
+
+type ChangeRoleResponseObject interface {
+	VisitChangeRoleResponse(w http.ResponseWriter) error
+}
+
+type ChangeRole200JSONResponse Member
+
+func (response ChangeRole200JSONResponse) VisitChangeRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeRole400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ChangeRole400JSONResponse) VisitChangeRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeRole401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ChangeRole401JSONResponse) VisitChangeRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeRole403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ChangeRole403JSONResponse) VisitChangeRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeRole404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ChangeRole404JSONResponse) VisitChangeRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeRole409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ChangeRole409JSONResponse) VisitChangeRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1563,6 +2055,18 @@ type StrictServerInterface interface {
 	// RenameCookbook Rename a cookbook (admins only)
 	// (PUT /cookbooks/{cookbookId})
 	RenameCookbook(ctx context.Context, request RenameCookbookRequestObject) (RenameCookbookResponseObject, error)
+	// ListMembers Who's in a cookbook
+	// (GET /cookbooks/{cookbookId}/members)
+	ListMembers(ctx context.Context, request ListMembersRequestObject) (ListMembersResponseObject, error)
+	// AddMember Add a user to a cookbook (admins only)
+	// (POST /cookbooks/{cookbookId}/members)
+	AddMember(ctx context.Context, request AddMemberRequestObject) (AddMemberResponseObject, error)
+	// RemoveMember Remove a member, or leave
+	// (DELETE /cookbooks/{cookbookId}/members/{username})
+	RemoveMember(ctx context.Context, request RemoveMemberRequestObject) (RemoveMemberResponseObject, error)
+	// ChangeRole Change a member's role (admins only)
+	// (PUT /cookbooks/{cookbookId}/members/{username})
+	ChangeRole(ctx context.Context, request ChangeRoleRequestObject) (ChangeRoleResponseObject, error)
 	// ListRecipes List a cookbook's recipes
 	// (GET /cookbooks/{cookbookId}/recipes)
 	ListRecipes(ctx context.Context, request ListRecipesRequestObject) (ListRecipesResponseObject, error)
@@ -1767,6 +2271,126 @@ func (sh *strictHandler) RenameCookbook(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RenameCookbookResponseObject); ok {
 		if err := validResponse.VisitRenameCookbookResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListMembers operation middleware
+func (sh *strictHandler) ListMembers(w http.ResponseWriter, r *http.Request, cookbookId CookbookId) {
+	var request ListMembersRequestObject
+
+	request.CookbookId = cookbookId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListMembers(ctx, request.(ListMembersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListMembers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListMembersResponseObject); ok {
+		if err := validResponse.VisitListMembersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AddMember operation middleware
+func (sh *strictHandler) AddMember(w http.ResponseWriter, r *http.Request, cookbookId CookbookId) {
+	var request AddMemberRequestObject
+
+	request.CookbookId = cookbookId
+
+	var body AddMemberJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AddMember(ctx, request.(AddMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AddMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AddMemberResponseObject); ok {
+		if err := validResponse.VisitAddMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveMember operation middleware
+func (sh *strictHandler) RemoveMember(w http.ResponseWriter, r *http.Request, cookbookId CookbookId, username Username) {
+	var request RemoveMemberRequestObject
+
+	request.CookbookId = cookbookId
+	request.Username = username
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveMember(ctx, request.(RemoveMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveMemberResponseObject); ok {
+		if err := validResponse.VisitRemoveMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ChangeRole operation middleware
+func (sh *strictHandler) ChangeRole(w http.ResponseWriter, r *http.Request, cookbookId CookbookId, username Username) {
+	var request ChangeRoleRequestObject
+
+	request.CookbookId = cookbookId
+	request.Username = username
+
+	var body ChangeRoleJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ChangeRole(ctx, request.(ChangeRoleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ChangeRole")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ChangeRoleResponseObject); ok {
+		if err := validResponse.VisitChangeRoleResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -2053,55 +2677,64 @@ func (sh *strictHandler) LogIn(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"3Fv7b9u4k/9XBroDsguoitPme8C6uB/S3PZxl26LJEVxqAOEFscSNxSpJam43iL/+xd86GXLcZw43sX+",
+	"lMgSh5zhPD8c/ohSWZRSoDA6Gv+ISqJIgQaVezqV8mYq5c0Hap+YiMZRSUwexZEgBUbjKG0/iCOFf1RM",
+	"IY3GRlUYRzrNsSB2pFmU9mttFBNZdHcXR+eYshLX0lX16+2oftGoPIVBqlX9ehuqd/ZjXUqh0cnkDaHn",
+	"+EeF2tinVAqDwv1LypKzlBgmxeHvWgr7W0v2PxXOonH0H4etvA/9W334q1JS+ako6lSx0hKJxtFljqD8",
+	"ZMA0FITPpCqQglQwI4xruCWcUTdnEt3F0akUM87SPS0tzYnIENIwqYY5MzkY+yboxYGGAospKj12v9sd",
+	"sJwQrpDQxUSQ8D62LHVHwlxWnMIUgePMOMqyMkAEEFowkUyE5fetVFNGKYrnZ/j/ZXWgENoFTysDC1kp",
+	"UJIjUIlaHBggnMs5mJxptyG/SfNWVoLuS1e0rFTqVwNCGsDvTBsn3ClyKTINRgJppbzwXNlPyUR41kDO",
+	"/G6ZuQSiEJigTBsmsorpnEw5xqBlQ0NDSiznUwTKdCpvUSEN+/OZLLgk9FLKM6Iy3K/FTCVdAH5PEal2",
+	"/Gj2JwJnBTPw0xF8ZG9gJhX878Wn3352m3Up5UciFsG89R5WKyUURCycMSMFYgwWpdGvwagFkIwwAZwY",
+	"VEkURzkSGvzyORq1eHEyM6jsY5/oBaZSULfRc8LsvsykQkuRicwTteRWPB4TBjN067SuVJDK5FKxP3EP",
+	"yvubNMBlliEFJhpfoFFrJgXkRAN+L62/TpyfD/S6IcoFLyVLVIZ5R50qJAbpiVuz9ZvEROOIEoMvDHNB",
+	"YMnVx/WQN4tVqdahBeSs9WTzXEIY03NeyRBxRgfCSx2bBl5Yt7JJoOf2Gx+i6nj2zU4UyAYicUcWXSav",
+	"mlXK6e+YGh9BQkQXZWVWhVqvtiDfz1BkJo/GR6NRHBVMNM/xQGTurs/RuG/uM6YHpmYGi/4/90mmpnVR",
+	"FQVRC0s+zEeUIotVoTmi962qprS6sG031iU3p7Ly5lQwwYqqiMajeMUUd6sF3YkHOVVIURhGuF7lsiRa",
+	"z6WiPWtqfoz7GvHyeINKxG0y1tem/zreTpk6OV2zmCHevOtZ4apArYkPTH17f18VRLywWYoNeNB5WXuA",
+	"Uskpx2LA1peWWM8xtKz3SLjlc3ld2hBTuf9QWN34FsmbDoE1M4VRQxN9EDM54CNlUTCzyv2p+92xOa0Y",
+	"p5Ba1zdTsogBkyyBSUSm6dHLV8eTyLnrSUTxdhLBPEcBlbgRci4GveAtKs18zOhPeY4ciUYIH0DGblEA",
+	"MUCx5HIB1mc3k98eJS+TV5MogZOpRmFcIK+E8jSoX7TevDWB/yGBfXS50KrIfpdMbBdVHm7Cfat4sOIH",
+	"825Wtp6dNV79sSvcjd262deveRfRIGzm44OAr1dd9sP5p1k0/rZBWr6AdeK+i7dPTazj+ST4oq5Pd56q",
+	"+FiQPGQqH982flaV9KlMBRJbMcWJNoCUbc3YULwczpO6vHUXuaooVy20UVvaan0yY8iptoyQsFowOTGO",
+	"Je1YsatfUneRKaSshmn6RD8J65sRXxj8boAzgVDaOrsZ0/jNl6MRZDDjslKTyM7SWE/HlP+1MaFbNqN4",
+	"KC98+QAyvlxd5ehrjrZkabYTUlmg7gYgAl/Oz2Ig4MpYF4HeKSJoQTxjy/ysTm2w1EORT97YOokJbVSV",
+	"2l91DFIgoLBFmRWsHRoDEyAV9bXZGjFuL0dDsoFFvbWba00K7Ps2CmKGhihGhI2El65iUreowChWaCCC",
+	"ApdzVCnRqCfC5Fi4HxUW8hY10MoXcqhtub6Oiy15GEr2457+1rIP3K53t7vw/J7S06uAPp377FogUuuL",
+	"JOhczlsbZwIIcKaHrHvLCqLWkkYC2+1JtzRYvwUhJ1hBwQLg5dhpCl44oQUTGgjXDtIgGQIzDfoXg0Ln",
+	"vZmxGjgRFDka+/jaOTypdIhOsXt2atp8o4MIg5rWGbEDAu2zIzCQHXsmnpzzLElvbbpiQ9TqPI/I6FaJ",
+	"W3+FaaWYWVzYtYUiweMjzmW1mHfqHxvUO3zVZqakZP+HCw/DsFAWLDtBYRRJDUzRzBGF88TvJExJeoOC",
+	"ut2xP52j/WimHDZEk4l4Ez4wqE0DTlsnTjg0KLrHoLRxKCnMGMfYUZxKk4Nm1PqqDAUqO9TkyBTYlXv3",
+	"D8wkcOqB52Y8zJjSJpmIiTiV4tbWsFLo8US8gF9vUS0ABS0lEwaCvDWQBl3y8oJKcNTaKijFlBP7zXUt",
+	"8zF8u7pOJgLgTNrQ4IHu68+fLi7hMNC5ft2C1J7zeoa4md76ZD1HBcejo8Stzlal2kZ+J89r93wNXv/c",
+	"F97v6ADfWq/S4K4JnDYQbNgRpmpTASn4wsO/tjiya18HzKMVkYtwXCNkaDQcj45jEPYFHI9eJeDzZ20T",
+	"Lo2W1gDmTQQQFy8tCTfMrv9Uco4+jDosWaGplEAKRMP1D5h4HzaJxvAtSZIruLuOgSO5tTFYSVnUiy9J",
+	"xoTDHGs/64FR5xEMM9aYo7ekYHzRiAVOPn+IOiVnNEr+lYysqcoSBSlZNI5eJaPklQMPTO6M6rCRr33K",
+	"0LkOa9Bu8g80Gkc2LjWij5bOh16ORjvDS3uA2PCZhGr1IQYtlU2Dpwuwtu8w7ePR0bpZmmUf9sBe52zq",
+	"OOfPeRo1W/QPQUDO7Byl1GYwVMAUbeLmXLjz1t7Q7aNTz0ClEoZxSxuYuGUGQZoclSvf+4I/dSGigXy9",
+	"+0Rt3ki62LnQQ/HW99K2krhb2fGjnU++9sgtlHBdpLlzMHAm/awD9dP5WV06CZz3xt9z9ukUaLRZgTqH",
+	"ojvQOb/NnfTCvW8N8/BHe+5851m1mcKqof6P+72nL719Ox5O5JrTsVpZa586t1WJn4w+1rrsoFebB7Un",
+	"m27E8eYRzVFjX5heBt0zP8sV4bzH2U/E52/WLH+2Uw46vndo1gtztD8jaJT38VvweIG+Q9NTzbjXNLEG",
+	"F2o/Oew0VdxdxVFITvuCPnfZ8t/P0e1vj329QJf3eh++aN8W6je7a6FL1rje+R2GJK6TqvRF6dPfEGdT",
+	"IkCjTzXDwG7iKDkOxFybe4T07zltvoP1rtGIppRss5y6YvprHMHXXB7ofh38dG8wmEqdUGp3yqfz7hQ/",
+	"TWUlDGijCMtyA2ROFq/tRioEpkFIn0r5hNnIiSBpiqXxKFGjZyZHAaQskSjHiFcEh1G4vLqvCSeUBhz9",
+	"efxR94hiz2lXfT4wrHk2YfLa1/VCz9sR8bHp9QqidsdsQjZbnxPdwsZPNYJndnd2wC+bBzTda307O6EU",
+	"iAf8+81LW7vJwx+1sJbSxmVzc2Stu/RQKRBhC+TX9m/XmYa3JsdCI79FHcM8Z2kOTE9EqGITOMdZpZF6",
+	"0OB49AuwGTATGtzsV7jU+db0uk2E49B3Y7mDDvcMRWWreqa0gYLcIGhZYFPAh0JLqpCpOuC3jaMDhn3u",
+	"2OjY9qYk2Q+g/1iNOw+73m1OdBv1NP8eb/y6aWDtZIbLon+sMoXGydWi2oFp53WLyO79egvC7jnHvN+r",
+	"Bzuue1aZcn7eZkH/rFzzaaYQoNbaFA60h/4e7npDhXkvmBZAzufMLzsnShuqyoOmKt4VoPa0NNOuuRP1",
+	"2uXtLNkcAtlCw8MzeYRud8R+M73A1wZ4rW0ieAy41o7+O0Brj3EYRw/wScu93WswvO7p50PwvNphHP6o",
+	"L4E8AOLraOtDAL6wpjnRu0DzdoDNqaCV63G3dRyO9mQZtU7/dYhbK6PnzMCai0lrsbkvrv/n7+Uf96UF",
+	"ofeprw3/XCd2jiUnaWugBxpqITsPljfdu+vMNvT3PuOGhRnWbJhGdctShwlVZdJrJIjG3676ecYtCtQa",
+	"0hzT4KLr9oBBbPFzNeUsda23Qs7dnSAbAWdSmhpszOUc2isoXGYsgFgDQOM7NK5J+Rll5eivc3CVEExk",
+	"vnX4fkl9dTW+b4xmuh7pJeYbPQbl5XqEQq8EpIRz7TsYpABtiDJgJNwIOYd5jib3aIeToKv+nexKkuGg",
+	"5D4+a2hwnS1r5Oav7bxgwiE0Oztz7pP1sq07We6Bbn4V4a5XWimFwrQ9GGwGRCz8AXTKHeJZF8oMEzjh",
+	"c7LQE6Gr1F0Yc+rMzIEGTWbo+i4I576/ffluUrjN2NxRGoBYzmT2qTIPSlDO/D0oWZml/PMCzYu212ep",
+	"Y6flqN/XsikLvc8hyMyuYv0J/4XV2m4rjZWtRuPXcV03xtQdNj+9N6b8JPgihgtS4AUz+N9n5Hs8EXbc",
+	"hV1F04Zj2mZG5pzujGWVQuq8TckJE/D+8vLzzwl88ZcNJqKG9vyZxlxJkUF9JUS7nhRH1B21uC6cBNwN",
+	"OlBYuqx/ImaE8UqhdrOQBlmNYVYpZ5H1Bb3QyuKhGP/xPGcc12z9B/FcR3idGzt7ThTW+YSz+hrfFtp7",
+	"ubXaPiXveF7g/qtTvKppV1eNEnrf+PIBWMzyRdRNVspEtGzJK92B365sRuttyufNleLRODokJYvuru7+",
+	"HQAA//8=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

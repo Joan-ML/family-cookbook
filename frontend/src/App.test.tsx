@@ -380,28 +380,30 @@ describe('cookbooks', () => {
     expect(screen.getByText(/No recipes yet/)).toBeInTheDocument()
   })
 
-  test('only admins see the settings link', async () => {
-    renderApp('/cookbooks/family')
-    expect(await screen.findByRole('link', { name: 'Cookbook settings' })).toBeInTheDocument()
+  test('every member can open members & settings', async () => {
+    const { user, location } = renderApp('/cookbooks/friends') // dev is an editor here
+
+    await user.click(await screen.findByRole('link', { name: 'Members & settings' }))
+
+    expect(location()).toBe('/cookbooks/friends/settings')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Members & settings' })).toBeInTheDocument()
   })
 
-  test('editors see no settings link', async () => {
-    renderApp('/cookbooks/friends')
-    await screen.findByRole('heading', { level: 1, name: 'Friends' })
-    expect(screen.queryByRole('link', { name: 'Cookbook settings' })).not.toBeInTheDocument()
-  })
-
-  test('for editors, the settings page explains that only admins can change settings', async () => {
+  test('editors see the members, but nothing to manage', async () => {
     renderApp('/cookbooks/friends/settings')
 
-    expect(await screen.findByText("Only the cookbook's admins can change its settings.")).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Delete cookbook' })).not.toBeInTheDocument()
+    const list = await screen.findByRole('list', { name: 'Members' })
+    expect(within(list).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['annaAdmin', 'dev (you)Editor'])
+    expect(screen.getByText("Only the cookbook's admins can add or remove members.")).toBeInTheDocument()
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Remove|Delete cookbook|Rename/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Leave cookbook' })).toBeInTheDocument()
   })
 
   test('admins rename a cookbook', async () => {
     const { user } = renderApp('/cookbooks/family/settings')
 
-    const name = await screen.findByLabelText('Name')
+    const name = await screen.findByLabelText('Cookbook name')
     await user.clear(name)
     await user.type(name, 'Home cooking')
     await user.click(screen.getByRole('button', { name: 'Rename' }))
@@ -432,5 +434,79 @@ describe('cookbooks', () => {
 
     expect(await screen.findByRole('heading', { name: 'Not found' })).toBeInTheDocument()
     expect(screen.getByText(/This cookbook doesn't exist/)).toBeInTheDocument()
+  })
+})
+
+describe('members', () => {
+  test('admins add someone by username, with a role', async () => {
+    const { user } = renderApp('/cookbooks/family/settings')
+
+    await user.type(await screen.findByLabelText('Username to add'), 'Bob')
+    await user.selectOptions(screen.getByLabelText('Role for the new member'), 'admin')
+    await user.click(screen.getByRole('button', { name: 'Add' }))
+
+    expect(await screen.findByLabelText('Role of bob')).toHaveValue('admin')
+    expect(screen.getByLabelText('Username to add')).toHaveValue('')
+  })
+
+  test('adding an unknown username or an existing member explains why not', async () => {
+    const { user } = renderApp('/cookbooks/family/settings')
+    const input = await screen.findByLabelText('Username to add')
+
+    await user.type(input, 'nobody')
+    await user.click(screen.getByRole('button', { name: 'Add' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('no account named "nobody"')
+
+    await user.clear(input)
+    await user.type(input, 'anna')
+    await user.click(screen.getByRole('button', { name: 'Add' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('anna is already a member')
+  })
+
+  test('admins change roles and remove members', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { user } = renderApp('/cookbooks/family/settings')
+
+    await user.selectOptions(await screen.findByLabelText('Role of anna'), 'admin')
+    await waitFor(() => expect(screen.getByLabelText('Role of anna')).toHaveValue('admin'))
+
+    await user.click(screen.getByRole('button', { name: 'Remove anna' }))
+    await waitFor(() => expect(screen.queryByLabelText('Role of anna')).not.toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: 'Remove dev' })).not.toBeInTheDocument() // you leave instead
+  })
+
+  test('the last admin is told why they cannot step down or leave', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { user, location } = renderApp('/cookbooks/family/settings')
+
+    await user.selectOptions(await screen.findByLabelText('Role of dev'), 'editor')
+    expect(await screen.findByRole('alert')).toHaveTextContent('make someone else admin first')
+    expect(screen.getByLabelText('Role of dev')).toHaveValue('admin')
+
+    await user.click(screen.getByRole('button', { name: 'Leave cookbook' }))
+    expect(await screen.findByText(/only admin: make someone else admin before leaving/)).toBeInTheDocument()
+    expect(location()).toBe('/cookbooks/family/settings')
+  })
+
+  test('leaving a cookbook returns home, where it is gone', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { user, location } = renderApp('/cookbooks/friends/settings')
+
+    await user.click(await screen.findByRole('button', { name: 'Leave cookbook' }))
+
+    expect(confirm).toHaveBeenCalledWith(`Leave "Friends"? You'll no longer see its recipes.`)
+    await waitFor(() => expect(location()).toBe('/'))
+    const list = await screen.findByRole('list', { name: 'Your cookbooks' })
+    expect(within(list).queryByRole('link', { name: 'Friends' })).not.toBeInTheDocument()
+  })
+
+  test('cancelling a removal changes nothing', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const { user } = renderApp('/cookbooks/family/settings')
+
+    await user.click(await screen.findByRole('button', { name: 'Remove anna' }))
+
+    expect(screen.getByLabelText('Role of anna')).toHaveValue('editor')
+    expect(within(screen.getByRole('list', { name: 'Members' })).getAllByRole('listitem')).toHaveLength(2)
   })
 })

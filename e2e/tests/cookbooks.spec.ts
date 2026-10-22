@@ -25,8 +25,8 @@ test('create a cookbook, fill it, rename it and delete it', async ({ page, uniqu
 
   // Rename it in its settings.
   await yours.getByRole('link', { name }).click()
-  await page.getByRole('link', { name: 'Cookbook settings' }).click()
-  await page.getByLabel('Name').fill(renamed)
+  await page.getByRole('link', { name: 'Members & settings' }).click()
+  await page.getByLabel('Cookbook name').fill(renamed)
   await page.getByRole('button', { name: 'Rename' }).click()
   await expect(page.getByRole('status')).toHaveText('Renamed.')
 
