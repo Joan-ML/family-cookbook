@@ -8,6 +8,7 @@ test('create a recipe and find it again after a reload', async ({ page, unique, 
   await page.goto(cookbook.path)
   await page.getByRole('link', { name: 'New recipe' }).click()
   await page.getByLabel('Name', { exact: true }).fill(name)
+  await page.getByLabel(/Servings/).fill('4')
   await page.getByLabel(/Ingredients/).fill('1 kg tomatoes\n1 cucumber\nOlive oil')
   await page.getByLabel('Step 1', { exact: true }).fill('Blend everything.')
   await page.getByRole('button', { name: 'Add step' }).click()
@@ -22,6 +23,7 @@ test('create a recipe and find it again after a reload', async ({ page, unique, 
   // A deep link survives a full reload: the server hands client routes to the app.
   await page.reload()
   await expect(page.getByRole('heading', { level: 1, name })).toBeVisible()
+  await expect(page.getByText('Serves 4')).toBeVisible()
   await expect(page.getByRole('listitem').filter({ hasText: 'Chill for an hour.' })).toBeVisible()
 
   await page.getByRole('link', { name: '← All recipes' }).click()

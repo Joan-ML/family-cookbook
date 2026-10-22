@@ -216,6 +216,7 @@ func assertRecipe(t *testing.T, got, want Recipe) {
 		!slices.Equal(got.Steps, want.Steps) ||
 		!slices.Equal(got.Tags, want.Tags) ||
 		!equalPtr(got.Source, want.Source) ||
+		!equalPtr(got.Servings, want.Servings) ||
 		!got.CreatedAt.Equal(want.CreatedAt) || got.CreatedBy != want.CreatedBy ||
 		!got.UpdatedAt.Equal(want.UpdatedAt) || got.UpdatedBy != want.UpdatedBy {
 		t.Errorf("recipe mismatch\n got: %s\nwant: %s", mustJSON(t, got), mustJSON(t, want))
@@ -224,4 +225,32 @@ func assertRecipe(t *testing.T, got, want Recipe) {
 
 func equalPtr[T comparable](a, b *T) bool {
 	return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
+}
+
+func TestServings(t *testing.T) {
+	srv, _ := newTestServer(t)
+	in := pancakes()
+	in.Servings = ptr(4)
+
+	created := createRecipe(t, srv, in)
+	if !equalPtr(created.Servings, ptr(4)) {
+		t.Fatalf("servings = %v, want 4", created.Servings)
+	}
+	got := decode[Recipe](t, srv.do(t, http.MethodGet, srv.book+"/recipes/"+created.Id, nil))
+	if !equalPtr(got.Servings, ptr(4)) {
+		t.Errorf("stored servings = %v, want 4", got.Servings)
+	}
+
+	// Leaving it out of an edit clears it, like any optional field.
+	in.Servings = nil
+	updated := decode[Recipe](t, srv.do(t, http.MethodPut, srv.book+"/recipes/"+created.Id, mustJSON(t, in)))
+	if updated.Servings != nil {
+		t.Errorf("servings = %d after clearing", *updated.Servings)
+	}
+
+	for _, bad := range []int{0, 101} {
+		in.Servings = ptr(bad)
+		res := srv.doInvalid(t, http.MethodPost, srv.book+"/recipes", mustJSON(t, in))
+		wantStatus(t, res, http.StatusBadRequest)
+	}
 }

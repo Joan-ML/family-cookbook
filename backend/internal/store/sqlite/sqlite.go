@@ -174,10 +174,10 @@ func (s *Store) CreateRecipe(ctx context.Context, r store.Recipe) error {
 	}
 	return s.withTx(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO recipes (id, cookbook_id, name, source, ingredients, steps,
+			INSERT INTO recipes (id, cookbook_id, name, source, servings, ingredients, steps,
 			                     created_at, created_by, updated_at, updated_by)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			r.ID, r.CookbookID, r.Name, r.Source, ingredients, steps,
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			r.ID, r.CookbookID, r.Name, r.Source, servings(r.Servings), ingredients, steps,
 			formatTime(r.CreatedAt), r.CreatedBy, formatTime(r.UpdatedAt), r.UpdatedBy)
 		if err != nil {
 			return err
@@ -195,9 +195,9 @@ func (s *Store) UpdateRecipe(ctx context.Context, cookbookID, id string, c store
 	err = s.withTx(ctx, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx, `
 			UPDATE recipes
-			SET name = ?, source = ?, ingredients = ?, steps = ?, updated_at = ?, updated_by = ?
+			SET name = ?, source = ?, servings = ?, ingredients = ?, steps = ?, updated_at = ?, updated_by = ?
 			WHERE id = ? AND cookbook_id = ?`,
-			c.Name, c.Source, ingredients, steps, formatTime(at), by, id, cookbookID)
+			c.Name, c.Source, servings(c.Servings), ingredients, steps, formatTime(at), by, id, cookbookID)
 		if err != nil {
 			return err
 		}
@@ -236,13 +236,14 @@ type querier interface {
 func getRecipe(ctx context.Context, q querier, cookbookID, id string) (store.Recipe, error) {
 	var r store.Recipe
 	var ingredients, steps, tags, createdAt, updatedAt string
+	var serves sql.NullInt64
 	err := q.QueryRowContext(ctx, `
-		SELECT id, cookbook_id, name, source, ingredients, steps,
+		SELECT id, cookbook_id, name, source, servings, ingredients, steps,
 		       created_at, created_by, updated_at, updated_by,
 		       (SELECT json_group_array(t.tag ORDER BY t.position)
 		        FROM recipe_tags t WHERE t.recipe_id = recipes.id)
 		FROM recipes WHERE id = ? AND cookbook_id = ?`, id, cookbookID).
-		Scan(&r.ID, &r.CookbookID, &r.Name, &r.Source, &ingredients, &steps,
+		Scan(&r.ID, &r.CookbookID, &r.Name, &r.Source, &serves, &ingredients, &steps,
 			&createdAt, &r.CreatedBy, &updatedAt, &r.UpdatedBy, &tags)
 	if errors.Is(err, sql.ErrNoRows) {
 		return store.Recipe{}, store.ErrNotFound
@@ -250,6 +251,7 @@ func getRecipe(ctx context.Context, q querier, cookbookID, id string) (store.Rec
 	if err != nil {
 		return store.Recipe{}, err
 	}
+	r.Servings = int(serves.Int64) // 0 when NULL
 
 	for _, f := range []struct {
 		src string
@@ -432,4 +434,12 @@ func (s *Store) DeleteExpiredSessions(ctx context.Context, now time.Time) error 
 	// Stored times are fixed-width UTC (see timeFormat), so text order is time order.
 	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at < ?`, formatTime(now))
 	return err
+}
+
+// servings stores 0 ("not given") as NULL.
+func servings(n int) any {
+	if n == 0 {
+		return nil
+	}
+	return n
 }

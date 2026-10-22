@@ -24,6 +24,7 @@ type RecipeContent struct {
 	Ingredients []string
 	Steps       []string
 	Tags        []string
+	Servings    int    // 0 if not given
 	Source      string // empty if unknown
 }
 

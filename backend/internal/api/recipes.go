@@ -142,6 +142,9 @@ func normalize(in RecipeInput) (store.RecipeContent, string) {
 	if in.Source != nil {
 		c.Source = strings.TrimSpace(*in.Source)
 	}
+	if in.Servings != nil {
+		c.Servings = *in.Servings // the spec limits it to 1–100
+	}
 	for _, tag := range trimLines(in.Tags) {
 		tag = strings.ToLower(tag)
 		if !slices.Contains(c.Tags, tag) {
@@ -175,6 +178,9 @@ func toAPIRecipe(r store.Recipe) Recipe {
 	}
 	if r.Source != "" {
 		out.Source = &r.Source
+	}
+	if r.Servings > 0 {
+		out.Servings = &r.Servings
 	}
 	return out
 }

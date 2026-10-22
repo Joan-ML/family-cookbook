@@ -38,6 +38,7 @@ function RecipeView({ recipe, cookbookId }: { recipe: Recipe; cookbookId: string
         ← All recipes
       </Link>
       <h1>{recipe.name}</h1>
+      {recipe.servings && <p className="servings">Serves {recipe.servings}</p>}
       <TagList tags={recipe.tags} cookbookId={cookbookId} />
       {recipe.source && (
         <p className="muted">

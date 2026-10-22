@@ -510,3 +510,37 @@ describe('members', () => {
     expect(within(screen.getByRole('list', { name: 'Members' })).getAllByRole('listitem')).toHaveLength(2)
   })
 })
+
+describe('servings', () => {
+  test('the recipe page shows how many it serves, right under the name', async () => {
+    renderApp('/cookbooks/family/recipes/pancakes')
+
+    const heading = await screen.findByRole('heading', { level: 1, name: 'Pancakes' })
+    expect(heading.nextElementSibling).toHaveTextContent('Serves 4')
+  })
+
+  test('recipes without servings show nothing', async () => {
+    renderApp('/cookbooks/family/recipes/pa-amb-tomaquet')
+
+    await screen.findByRole('heading', { level: 1, name: 'Pa amb tomàquet' })
+    expect(screen.queryByText(/^Serves/)).not.toBeInTheDocument()
+  })
+
+  test('the form sets, shows and clears servings', async () => {
+    const { user } = renderApp('/cookbooks/family/new')
+
+    await user.type(await screen.findByLabelText('Name'), 'Paella')
+    await user.type(screen.getByLabelText(/Servings/), '6')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText('Serves 6')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('link', { name: 'Edit' }))
+    const servings = await screen.findByLabelText(/Servings/)
+    expect(servings).toHaveValue(6)
+    await user.clear(servings)
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await screen.findByRole('heading', { level: 1, name: 'Paella' })
+    expect(screen.queryByText(/^Serves/)).not.toBeInTheDocument()
+  })
+})

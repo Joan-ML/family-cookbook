@@ -28,6 +28,7 @@ function EditRecipe({ cookbookId, id }: { cookbookId: string; id: string }) {
 // comma-separated.
 type Fields = {
   name: string
+  servings: string // as typed; empty when not given
   ingredients: string
   steps: Step[]
   tags: string
@@ -37,6 +38,7 @@ type Fields = {
 function toFields(r?: Recipe): Fields {
   return {
     name: r?.name ?? '',
+    servings: r?.servings?.toString() ?? '',
     ingredients: r?.ingredients.join('\n') ?? '',
     steps: r?.steps.length ? r.steps.map((text) => newStep(text)) : [newStep()],
     tags: r?.tags.join(', ') ?? '',
@@ -53,6 +55,7 @@ function toInput(f: Fields): RecipeInput {
     ingredients: nonBlank(f.ingredients.split('\n')),
     steps: nonBlank(f.steps.map((s) => s.text)),
     tags: nonBlank(f.tags.split(',')),
+    ...(f.servings.trim() ? { servings: Number(f.servings) } : {}),
     ...(f.source.trim() ? { source: f.source } : {}),
   }
 }
@@ -94,6 +97,21 @@ function RecipeForm({ cookbookId, recipe }: { cookbookId: string; recipe?: Recip
           required
           maxLength={200}
           autoFocus={!recipe}
+        />
+      </label>
+
+      <label className="field">
+        <span>Servings</span>
+        <small className="muted">Optional: how many people it serves</small>
+        <input
+          className="servings-input"
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={100}
+          step={1}
+          value={fields.servings}
+          onChange={(e) => set({ servings: e.target.value })}
         />
       </label>
 

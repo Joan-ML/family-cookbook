@@ -311,6 +311,8 @@ export interface components {
              *     them and removes duplicates.
              */
             tags: string[];
+            /** @description How many people the recipe serves. Absent if not given. */
+            servings?: number;
             /** @description Where the recipe comes from, e.g. a URL, a book or "Grandma". */
             source?: string;
         };

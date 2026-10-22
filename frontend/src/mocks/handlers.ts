@@ -49,6 +49,7 @@ const seed: Recipe[] = [
     ingredients: ['200 g flour', '2 eggs', '300 ml milk', '1 pinch of salt'],
     steps: ['Whisk everything into a smooth batter.', 'Fry ladlefuls in a hot, buttered pan.'],
     tags: ['breakfast', 'vegetarian'],
+    servings: 4,
     source: 'Grandma',
     createdAt: '2026-01-01T10:00:00Z',
     createdBy: mockUser,
@@ -154,6 +155,7 @@ function normalize(input: RecipeInput): RecipeInput | ApiError {
     ingredients: lines(input.ingredients),
     steps: lines(input.steps),
     tags: [...new Set(lines(input.tags).map((t) => t.toLowerCase()))],
+    ...(input.servings ? { servings: input.servings } : {}),
     ...(source ? { source } : {}),
   }
 }
@@ -342,7 +344,7 @@ export const handlers = [
       if (!existing) return recipeNotFound()
       const content = normalize(await request.json())
       if ('message' in content) return HttpResponse.json<ApiError>(content, { status: 400 })
-      const { source: _, ...rest } = existing
+      const { source: _, servings: __, ...rest } = existing
       const recipe: Recipe = {
         ...rest,
         ...content,

@@ -398,6 +398,16 @@ a {
 
 /* Recipe */
 
+.servings {
+  margin: -0.4rem 0 0.6rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.field .servings-input {
+  max-width: 7rem;
+}
+
 .back {
   display: inline-block;
   margin-bottom: 0.5rem;

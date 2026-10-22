@@ -9,6 +9,7 @@ This application's main purpose is for me to finally try vibe coding. Its second
 - **Shared cookbooks.** Users create cookbooks and invite other users to them. All members of a cookbook see and edit its recipes, and everyone sees the same changes. Recipes are only visible to the members of their cookbook.
 - **Simple recipes.** Each recipe has:
   - a name
+  - how many people it serves (optional)
   - photos (optional)
   - a list of ingredients
   - cooking instructions
@@ -25,7 +26,7 @@ This application's main purpose is for me to finally try vibe coding. Its second
 - Social features: following, comments, ratings
 - Fine-grained permissions beyond cookbook admins and editors
 - Moving or copying recipes between cookbooks
-- Nutrition data, calorie counts, or scaling servings
+- Nutrition data, calorie counts, or scaling recipes to a different number of servings
 - Meal planning and shopping lists
 
 ## Technical overview
