@@ -44,6 +44,7 @@ family-cookbook/
 │   └── src/
 │       ├── api/       # typed client + types generated from the contract
 │       └── mocks/     # MSW handlers for tests and mock dev mode
+├── e2e/               # Playwright tests against the running app
 ├── .github/workflows/ # CI: one workflow per package, plus the image
 ├── Dockerfile         # the single deployable image
 ├── compose.yaml       # run the image locally
@@ -169,6 +170,19 @@ npm run lint
 npm run gen:api       # regenerate types after editing api/openapi.yaml
 npm run check:api     # fail if generated types are stale
 ```
+
+**End-to-end tests** (Node.js 22+), from `e2e/`. They drive the real app in phone-sized Chromium (Android) and WebKit (iPhone), through the real server and database. CI runs them against every image before publishing it. Each test creates uniquely named recipes and deletes them afterwards, so any running instance works, but prefer a scratch one:
+
+```sh
+npm install                              # once
+npx playwright install chromium webkit   # once; downloads browsers to ~/.cache/ms-playwright
+BASE_URL=http://localhost:8080 npx playwright test          # against the image or `go run`
+BASE_URL=http://localhost:5173 npx playwright test          # or through Vite
+npx playwright test --project=android    # one browser only
+npm run report                           # HTML report of the last run
+```
+
+Playwright's WebKit is built for Ubuntu and needs library versions that other distributions (e.g. Fedora) don't ship, so it may not start locally; use `--project=android` there and let CI run both.
 
 Local data (the SQLite file and photos) lives in `data/`, which git ignores.
 

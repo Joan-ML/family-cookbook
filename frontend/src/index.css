@@ -67,6 +67,8 @@ main {
   max-width: 40rem;
   margin: 0 auto;
   padding: 1rem 1rem 3rem;
+  /* Long unbroken text (e.g. a pasted link) wraps instead of widening the page. */
+  overflow-wrap: anywhere;
 }
 
 h1 {
