@@ -307,6 +307,7 @@ a {
 .steps li {
   padding-left: 0.25rem;
   margin-bottom: 0.9rem;
+  white-space: pre-line; /* keep line breaks typed within a step */
 }
 
 .meta {
@@ -362,6 +363,34 @@ a {
   padding-top: 0.6rem;
   color: var(--muted);
   font-weight: 600;
+}
+
+.step-fields li.dragging {
+  position: relative;
+  z-index: 1;
+  border-radius: var(--radius);
+  background: var(--bg);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.18);
+}
+
+/* The handle owns touch gestures, so dragging it doesn't scroll the page. */
+.drag-handle {
+  min-width: var(--tap);
+  min-height: var(--tap);
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 1.3rem;
+  cursor: grab;
+  touch-action: none;
+  /* Dragging mustn't select text or, on iOS, open the long-press menu. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
 }
 
 .step-fields textarea {

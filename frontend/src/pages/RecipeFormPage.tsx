@@ -3,8 +3,10 @@ import { Link, useLocation } from 'wouter'
 import type { Recipe, RecipeInput } from '../api/client'
 import { createRecipe, getRecipe, updateRecipe } from '../api/recipes'
 import { Loading, LoadError } from '../components'
+import { newStep, type Step } from '../steps'
 import { useLoad } from '../useLoad'
 import { NotFound } from './NotFound'
+import { StepsField } from './StepsField'
 
 /** Create a recipe, or edit one when `id` is given. */
 export function RecipeFormPage({ id }: { id?: string }) {
@@ -22,11 +24,11 @@ function EditRecipe({ id }: { id: string }) {
 }
 
 // The form edits plain strings; ingredients are one per line and tags are
-// comma-separated. The server trims and drops empty entries.
+// comma-separated.
 type Fields = {
   name: string
   ingredients: string
-  steps: string[]
+  steps: Step[]
   tags: string
   source: string
 }
@@ -35,18 +37,21 @@ function toFields(r?: Recipe): Fields {
   return {
     name: r?.name ?? '',
     ingredients: r?.ingredients.join('\n') ?? '',
-    steps: r?.steps.length ? r.steps : [''],
+    steps: r?.steps.length ? r.steps.map((text) => newStep(text)) : [newStep()],
     tags: r?.tags.join(', ') ?? '',
     source: r?.source ?? '',
   }
 }
 
+// The API rejects empty entries, so blank lines, steps and tags are dropped.
+const nonBlank = (items: string[]) => items.map((s) => s.trim()).filter(Boolean)
+
 function toInput(f: Fields): RecipeInput {
   return {
     name: f.name,
-    ingredients: f.ingredients.split('\n'),
-    steps: f.steps,
-    tags: f.tags.split(','),
+    ingredients: nonBlank(f.ingredients.split('\n')),
+    steps: nonBlank(f.steps.map((s) => s.text)),
+    tags: nonBlank(f.tags.split(',')),
     ...(f.source.trim() ? { source: f.source } : {}),
   }
 }
@@ -58,8 +63,6 @@ function RecipeForm({ recipe }: { recipe?: Recipe }) {
   const [error, setError] = useState('')
 
   const set = (patch: Partial<Fields>) => setFields((f) => ({ ...f, ...patch }))
-  const setStep = (i: number, value: string) => set({ steps: fields.steps.map((s, j) => (j === i ? value : s)) })
-  const removeStep = (i: number) => set({ steps: fields.steps.filter((_, j) => j !== i) })
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -99,29 +102,9 @@ function RecipeForm({ recipe }: { recipe?: Recipe }) {
 
       <fieldset className="field">
         <legend>Steps</legend>
-        <ol className="step-fields">
-          {fields.steps.map((step, i) => (
-            <li key={i}>
-              <textarea
-                rows={3}
-                aria-label={`Step ${i + 1}`}
-                value={step}
-                onChange={(e) => setStep(i, e.target.value)}
-              />
-              {fields.steps.length > 1 && (
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label={`Remove step ${i + 1}`}
-                  onClick={() => removeStep(i)}
-                >
-                  ×
-                </button>
-              )}
-            </li>
-          ))}
-        </ol>
-        <button type="button" className="button" onClick={() => set({ steps: [...fields.steps, ''] })}>
+        <small className="muted">Drag ⠿ to reorder. Pasting several steps splits them up.</small>
+        <StepsField steps={fields.steps} onChange={(steps) => set({ steps })} />
+        <button type="button" className="button" onClick={() => set({ steps: [...fields.steps, newStep()] })}>
           Add step
         </button>
       </fieldset>

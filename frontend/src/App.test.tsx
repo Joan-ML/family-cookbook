@@ -148,7 +148,7 @@ describe('recipe form', () => {
     const { user, location } = renderApp('/')
     await user.click(await screen.findByRole('link', { name: 'New recipe' }))
 
-    await user.type(screen.getByLabelText('Name'), 'Gazpacho')
+    await user.type(await screen.findByLabelText('Name'), 'Gazpacho')
     await user.type(screen.getByLabelText(/Ingredients/), 'Tomatoes{Enter}Cucumber{Enter}Olive oil')
     await user.type(screen.getByLabelText('Step 1'), 'Blend everything.')
     await user.click(screen.getByRole('button', { name: 'Add step' }))
@@ -190,6 +190,56 @@ describe('recipe form', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('name must not be blank')
     expect(location()).toBe('/new')
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+  })
+
+  test('pasting several steps splits them into separate steps', async () => {
+    const { user } = renderApp('/new')
+    const step1 = await screen.findByLabelText('Step 1')
+    await user.type(step1, 'Before: ')
+
+    await user.click(step1)
+    await user.paste('1. Chop the onions.\n2. Fry them.\n3. Season.')
+
+    expect(screen.getByLabelText('Step 1')).toHaveValue('Before: Chop the onions.')
+    expect(screen.getByLabelText('Step 2')).toHaveValue('Fry them.')
+    expect(screen.getByLabelText('Step 3')).toHaveValue('Season.')
+  })
+
+  test('pasting a single step pastes normally', async () => {
+    const { user } = renderApp('/new')
+    const step1 = await screen.findByLabelText('Step 1')
+
+    await user.click(step1)
+    await user.paste('Whisk everything\ntogether.')
+
+    expect(step1).toHaveValue('Whisk everything\ntogether.')
+    expect(screen.queryByLabelText('Step 2')).not.toBeInTheDocument()
+  })
+
+  test('each step has a reorder handle', async () => {
+    renderApp('/recipes/pancakes/edit')
+
+    expect(await screen.findByRole('button', { name: 'Reorder step 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reorder step 2' })).toBeInTheDocument()
+  })
+
+  test('sends no empty ingredients, steps or tags, which the API rejects', async () => {
+    let body: unknown
+    server.use(
+      http.post('*/api/recipes', async ({ request }) => {
+        body = await request.clone().json()
+        return getResponse(handlers, request)
+      }),
+    )
+    const { user } = renderApp('/new')
+
+    await user.type(await screen.findByLabelText('Name'), 'Toast')
+    await user.type(screen.getByLabelText(/Tags/), 'quick, , ')
+    await user.click(screen.getByRole('button', { name: 'Add step' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await screen.findByRole('heading', { level: 1, name: 'Toast' })
+    expect(body).toEqual({ name: 'Toast', ingredients: [], steps: [], tags: ['quick'] })
   })
 
   test('cancel goes back without saving', async () => {
