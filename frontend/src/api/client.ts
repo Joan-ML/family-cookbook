@@ -2,6 +2,7 @@ import createClient from 'openapi-fetch'
 import type { components, paths } from './schema'
 
 export type Health = components['schemas']['Health']
+export type Info = components['schemas']['Info']
 export type ApiError = components['schemas']['Error']
 export type Recipe = components['schemas']['Recipe']
 export type RecipeInput = components['schemas']['RecipeInput']

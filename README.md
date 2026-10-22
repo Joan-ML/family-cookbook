@@ -185,13 +185,38 @@ Why one container rather than separate backend and nginx/frontend containers:
 
 HTTPS, compression and similar concerns are handled by a reverse proxy in front of the container (e.g. Caddy), not by the app.
 
-The image runs as an unprivileged user on a distroless base (no shell). It serves the UI and the API on port 8080 and keeps its data in `/data`. Build and run it from the repository root, with Docker or Podman (`podman` takes the same arguments):
+The image runs as an unprivileged user on a distroless base (no shell). It serves the UI and the API on port 8080 and keeps its data in `/data`.
+
+**Running a release.** On the server, pull a published image and give it its version through one variable, so the image tag and the reported version can't disagree:
+
+```yaml
+# compose.yaml on the server
+services:
+  cookbook:
+    image: ghcr.io/<owner>/<repo>:${VERSION}
+    environment:
+      APP_VERSION: v${VERSION}
+    ports:
+      - "8080:8080"
+    volumes:
+      - cookbook-data:/data
+    restart: unless-stopped
+
+volumes:
+  cookbook-data:
+```
 
 ```sh
-docker compose up --build        # build and run; open http://localhost:8080
+VERSION=0.2.0 docker compose up -d
+```
+
+**Building from source.** From the repository root, with Docker or Podman (`podman` takes the same arguments):
+
+```sh
+COMMIT=$(git rev-parse --short HEAD) docker compose up --build   # open http://localhost:8080
 
 # or by hand:
-docker build --build-arg VERSION=$(git describe --tags --always --dirty) -t family-cookbook .
+docker build --build-arg COMMIT=$(git rev-parse --short HEAD) -t family-cookbook .
 docker run -d --name cookbook -p 8080:8080 -v cookbook-data:/data family-cookbook
 ```
 
@@ -203,7 +228,12 @@ Until login exists, the image is for local use only: don't expose it to the inte
 
 ### Versioning and releases
 
-Git tags are the only source of truth for the version; no file in the repository holds it. Frontend and backend always ship together, so they share one version. It appears in the page footer, in `/api/health` and in the server log.
+Images are **built once and promoted**, never rebuilt for a release:
+
+1. Every commit on `main` is built, smoke-tested and published as `sha-<commit>` (and `main`).
+2. Tagging a commit `vX.Y.Z` copies that commit's image to the release tags. The digest is unchanged, so a release is byte-for-byte the image that was tested. Only commits built on `main` can be released.
+
+Because an image exists before it has a release number, it only knows its commit. The release version is given when deploying, as `APP_VERSION` (see above). The page footer and `GET /api/info` show both, e.g. `v0.2.0 (abc1234)`, or just the commit when `APP_VERSION` isn't set.
 
 Versions follow SemVer, with the numbers chosen for whoever runs the server:
 
@@ -213,10 +243,10 @@ Versions follow SemVer, with the numbers chosen for whoever runs the server:
 
 Versions stay at `0.x` until login exists; `v1.0.0` will mean "safe to deploy".
 
-To release, tag a commit on `main` and push the tag. CI builds, tests and publishes the image:
+To release, tag a commit that is on `main` and push the tag:
 
 ```sh
-git tag v0.2.0
+git tag -a v0.2.0 -m "v0.2.0"
 git push origin v0.2.0
 ```
 
@@ -228,5 +258,4 @@ Published images (GitHub Container Registry):
 | `1.2` | the latest `1.2.x` release |
 | `latest` | the latest release |
 | `main` | the latest commit on `main`, unreleased |
-
-Builds that aren't from a release tag show `git describe` output, e.g. `v0.2.0-3-gabc1234` (three commits after `v0.2.0`), with `-dirty` when there are uncommitted changes, or `dev` when no git information is available.
+| `sha-<commit>` | the build of that commit |

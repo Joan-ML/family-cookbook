@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw/http'
-import type { ApiError, Health, Recipe, RecipeInput, RecipeList } from '../api/client'
+import type { ApiError, Health, Info, Recipe, RecipeInput, RecipeList } from '../api/client'
 
 // Mock API used by unit tests (src/mocks/node.ts) and by `npm run dev:mock`
 // (src/mocks/browser.ts). Response bodies are typed from the OpenAPI schema,
@@ -65,7 +65,8 @@ function normalize(input: RecipeInput): RecipeInput | ApiError {
 }
 
 export const handlers = [
-  http.get('*/api/health', () => HttpResponse.json<Health>({ status: 'ok', version: 'mock' })),
+  http.get('*/api/health', () => HttpResponse.json<Health>({ status: 'ok' })),
+  http.get('*/api/info', () => HttpResponse.json<Info>({ version: 'v0.0.0-mock', commit: 'mock' })),
 
   http.get('*/api/recipes', () => {
     const items = [...recipes.values()]

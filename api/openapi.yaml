@@ -30,6 +30,20 @@ paths:
               schema:
                 $ref: "#/components/schemas/Health"
 
+  /info:
+    get:
+      operationId: getInfo
+      summary: Which build is running
+      description: Public for now, so the footer can show it before login exists.
+      security: []
+      responses:
+        "200":
+          description: The running build.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Info"
+
   /recipes:
     get:
       operationId: listRecipes
@@ -167,13 +181,21 @@ components:
   schemas:
     Health:
       type: object
-      required: [status, version]
+      required: [status]
       properties:
         status:
           type: string
           enum: [ok]
+
+    Info:
+      type: object
+      required: [commit]
+      properties:
         version:
-          description: Application version, e.g. "v1.2.3", or "dev" for unversioned builds.
+          description: Release version given at deploy time, e.g. "v1.2.3". Absent for unreleased builds.
+          type: string
+        commit:
+          description: Commit the build came from, e.g. "abc1234", or "dev" when unknown.
           type: string
 
     Error:

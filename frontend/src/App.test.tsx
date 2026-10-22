@@ -203,13 +203,31 @@ describe('recipe form', () => {
   })
 })
 
-test('shows the app version in the footer', async () => {
-  renderApp('/')
+describe('footer', () => {
+  test('shows the release version and commit', async () => {
+    renderApp('/')
 
-  expect(await screen.findByRole('contentinfo')).toHaveTextContent(
-    `Family Cookbook · ${import.meta.env.VITE_APP_VERSION}`,
-  )
-  expect(import.meta.env.VITE_APP_VERSION).toBeTruthy()
+    const footer = await screen.findByRole('contentinfo')
+    await waitFor(() => expect(footer).toHaveTextContent('Family Cookbook · v0.0.0-mock (mock)'))
+  })
+
+  test('shows just the commit for an unreleased build', async () => {
+    server.use(http.get('*/api/info', () => HttpResponse.json({ commit: 'abc1234' })))
+
+    renderApp('/')
+
+    const footer = await screen.findByRole('contentinfo')
+    await waitFor(() => expect(footer).toHaveTextContent(/^Family Cookbook · abc1234$/))
+  })
+
+  test('still shows the name when build information is unavailable', async () => {
+    server.use(http.get('*/api/info', () => HttpResponse.error()))
+
+    renderApp('/')
+
+    await screen.findByText('Pancakes') // the page has otherwise loaded
+    expect(screen.getByRole('contentinfo')).toHaveTextContent(/^Family Cookbook$/)
+  })
 })
 
 test('shows not found for an unknown page', async () => {

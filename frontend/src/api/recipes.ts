@@ -1,10 +1,16 @@
-import { api, type Recipe, type RecipeInput, type RecipeSummary } from './client'
+import { api, type Info, type Recipe, type RecipeInput, type RecipeSummary } from './client'
 
 /** An API call failed; `message` is the server's explanation when it gave one. */
 export class ApiRequestError extends Error {}
 
 function fail(error: { message?: string } | undefined, fallback: string): never {
   throw new ApiRequestError(error?.message || fallback)
+}
+
+export async function getInfo(): Promise<Info> {
+  const { data, error } = await api.GET('/info')
+  if (!data) fail(error, "Couldn't load build information.")
+  return data
 }
 
 export async function listRecipes(): Promise<RecipeSummary[]> {

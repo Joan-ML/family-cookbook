@@ -21,6 +21,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Which build is running
+         * @description Public for now, so the footer can show it before login exists.
+         */
+        get: operations["getInfo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/recipes": {
         parameters: {
             query?: never;
@@ -67,8 +87,12 @@ export interface components {
         Health: {
             /** @enum {string} */
             status: "ok";
-            /** @description Application version, e.g. "v1.2.3", or "dev" for unversioned builds. */
-            version: string;
+        };
+        Info: {
+            /** @description Release version given at deploy time, e.g. "v1.2.3". Absent for unreleased builds. */
+            version?: string;
+            /** @description Commit the build came from, e.g. "abc1234", or "dev" when unknown. */
+            commit: string;
         };
         Error: {
             /** @description Human-readable description of the problem. */
@@ -173,6 +197,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Health"];
+                };
+            };
+        };
+    };
+    getInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The running build. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Info"];
                 };
             };
         };

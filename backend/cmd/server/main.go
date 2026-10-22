@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"log"
@@ -38,7 +39,8 @@ func main() {
 
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
-		log.Printf("family cookbook %s listening on %s, data in %s", version.Version, addr, dataDir)
+		log.Printf("family cookbook %s (commit %s) listening on %s, data in %s",
+			cmp.Or(version.Release(), "unreleased"), version.Commit(), addr, dataDir)
 		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			log.Fatal(err)
 		}

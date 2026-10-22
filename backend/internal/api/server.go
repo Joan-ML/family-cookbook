@@ -33,13 +33,21 @@ type server struct {
 	store store.Store
 	now   func() time.Time
 	newID func() string
+	// release and commit identify the running build; see package version.
+	release, commit string
 }
 
 var _ StrictServerInterface = (*server)(nil)
 
 // NewServer returns the HTTP handler for the whole API, mounted under /api.
 func NewServer(st store.Store) http.Handler {
-	return newHandler(&server{store: st, now: time.Now, newID: rand.Text})
+	return newHandler(&server{
+		store:   st,
+		now:     time.Now,
+		newID:   rand.Text,
+		release: version.Release(),
+		commit:  version.Commit(),
+	})
 }
 
 func newHandler(s *server) http.Handler {
@@ -124,7 +132,15 @@ func limitBody(next http.Handler) http.Handler {
 }
 
 func (s *server) GetHealth(ctx context.Context, _ GetHealthRequestObject) (GetHealthResponseObject, error) {
-	return GetHealth200JSONResponse{Status: Ok, Version: version.Version}, nil
+	return GetHealth200JSONResponse{Status: Ok}, nil
+}
+
+func (s *server) GetInfo(ctx context.Context, _ GetInfoRequestObject) (GetInfoResponseObject, error) {
+	info := GetInfo200JSONResponse{Commit: s.commit}
+	if s.release != "" {
+		info.Version = &s.release
+	}
+	return info, nil
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {

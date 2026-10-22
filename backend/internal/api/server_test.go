@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"family-cookbook/backend/internal/store/sqlite"
-	"family-cookbook/backend/internal/version"
 )
 
 // testNow is the fixed clock used by test servers; tests advance it with tick.
@@ -77,8 +76,29 @@ func TestHealth(t *testing.T) {
 	res := srv.do(t, http.MethodGet, "/api/health", nil)
 
 	wantStatus(t, res, http.StatusOK)
-	if got := decode[Health](t, res).Version; got != version.Version {
-		t.Errorf("version = %q, want %q", got, version.Version)
+}
+
+func TestInfo(t *testing.T) {
+	tests := []struct {
+		name, release string
+		want          Info
+	}{
+		{"released", "v1.2.3", Info{Commit: "abc1234", Version: ptr("v1.2.3")}},
+		{"unreleased", "", Info{Commit: "abc1234"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv, s := newTestServer(t)
+			s.release, s.commit = tt.release, "abc1234"
+
+			res := srv.do(t, http.MethodGet, "/api/info", nil)
+
+			wantStatus(t, res, http.StatusOK)
+			got := decode[Info](t, res)
+			if got.Commit != tt.want.Commit || !equalPtr(got.Version, tt.want.Version) {
+				t.Errorf("info = %s, want %s", mustJSON(t, got), mustJSON(t, tt.want))
+			}
+		})
 	}
 }
 

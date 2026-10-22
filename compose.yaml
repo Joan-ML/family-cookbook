@@ -1,8 +1,14 @@
-# Run the app locally from the image:  docker compose up --build
-# (or `podman compose up --build`). Then open http://localhost:8080.
+# Build and run the app locally from source:
+#   COMMIT=$(git rev-parse --short HEAD) docker compose up --build
+# (or `podman compose ...`). Then open http://localhost:8080.
+#
+# To run a published release instead, see "Deployment" in the README.
 services:
   cookbook:
-    build: .
+    build:
+      context: .
+      args:
+        COMMIT: ${COMMIT:-dev}
     image: family-cookbook
     ports:
       - "8080:8080"

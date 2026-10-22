@@ -1,4 +1,5 @@
 import { Link, Route, Switch } from 'wouter'
+import { Footer } from './components'
 import { NotFound } from './pages/NotFound'
 import { RecipeFormPage } from './pages/RecipeFormPage'
 import { RecipeListPage } from './pages/RecipeListPage'
@@ -26,7 +27,7 @@ function App() {
           </Route>
         </Switch>
       </main>
-      <footer className="site-footer">Family Cookbook · {import.meta.env.VITE_APP_VERSION}</footer>
+      <Footer />
     </>
   )
 }
