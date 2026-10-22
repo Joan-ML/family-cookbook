@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import { getResponse } from 'msw'
 import { http, HttpResponse } from 'msw/http'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { handlers } from './mocks/handlers'
+import { handlers, mockPassword, setMockSession } from './mocks/handlers'
 import { server } from './mocks/node'
 import { renderApp } from './test/renderApp'
 
@@ -284,4 +284,71 @@ test('shows not found for an unknown page', async () => {
   renderApp('/nope')
 
   expect(await screen.findByRole('heading', { name: 'Not found' })).toBeInTheDocument()
+})
+
+describe('login', () => {
+  async function logInAs(user: ReturnType<typeof renderApp>['user'], username: string, password: string) {
+    await user.type(await screen.findByLabelText('Username'), username)
+    await user.type(screen.getByLabelText('Password'), password)
+    await user.click(screen.getByRole('button', { name: 'Log in' }))
+  }
+
+  test('logged out, any address shows the login page, then what was asked for', async () => {
+    setMockSession(null)
+    const { user, location } = renderApp('/recipes/pancakes')
+
+    expect(await screen.findByRole('heading', { name: 'Log in' })).toBeInTheDocument()
+    expect(screen.queryByText(/session ended/)).not.toBeInTheDocument()
+    await logInAs(user, 'anna', mockPassword)
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Pancakes' })).toBeInTheDocument()
+    expect(location()).toBe('/recipes/pancakes')
+    expect(screen.getByRole('banner')).toHaveTextContent('anna · Log out')
+  })
+
+  test('a wrong password shows the server message and keeps the form', async () => {
+    setMockSession(null)
+    const { user } = renderApp('/')
+
+    await logInAs(user, 'anna', 'wrong password')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('wrong username or password')
+    expect(screen.getByLabelText('Username')).toHaveValue('anna')
+    expect(screen.getByRole('button', { name: 'Log in' })).toBeEnabled()
+  })
+
+  test('too many attempts are explained', async () => {
+    setMockSession(null)
+    server.use(
+      http.post('*/api/session', () =>
+        HttpResponse.json({ message: 'too many' }, { status: 429, headers: { 'Retry-After': '600' } }),
+      ),
+    )
+    const { user } = renderApp('/')
+
+    await logInAs(user, 'anna', mockPassword)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Too many failed attempts')
+  })
+
+  test('logging out returns to the login page', async () => {
+    const { user } = renderApp('/')
+    await screen.findByText('Pancakes')
+
+    await user.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Log out' }))
+
+    expect(await screen.findByRole('heading', { name: 'Log in' })).toBeInTheDocument()
+    expect(screen.queryByText('Pancakes')).not.toBeInTheDocument()
+  })
+
+  test('when the session ends while using the app, it asks to log in again', async () => {
+    const { user } = renderApp('/')
+    await screen.findByText('Pancakes')
+
+    setMockSession(null) // e.g. the password was reset from the command line
+    await user.click(screen.getByRole('link', { name: 'Pancakes' }))
+
+    expect(await screen.findByRole('heading', { name: 'Log in' })).toBeInTheDocument()
+    expect(screen.getByText(/Your session ended/)).toBeInTheDocument()
+  })
 })

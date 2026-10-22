@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw/http'
-import type { ApiError, Health, Info, Recipe, RecipeInput, RecipeList } from '../api/client'
+import type { ApiError, Credentials, Health, Info, Recipe, RecipeInput, RecipeList, User } from '../api/client'
 
 // Mock API used by unit tests (src/mocks/node.ts) and by `npm run dev:mock`
 // (src/mocks/browser.ts). Response bodies are typed from the OpenAPI schema,
@@ -7,8 +7,18 @@ import type { ApiError, Health, Info, Recipe, RecipeInput, RecipeList } from '..
 //
 // Recipes live in memory and mimic the backend's behaviour: input is trimmed,
 // tags are lowercased and de-duplicated, and a blank name is rejected.
+//
+// Sessions: the mock starts logged in as "dev". Any username logs in with
+// mockPassword; everything but the public endpoints answers 401 when logged out.
 
 const mockUser = 'dev'
+export const mockPassword = 'cookbook password'
+let sessionUser: string | null = mockUser
+
+/** Logs the mock API in as `user`, or out with null. */
+export function setMockSession(user: string | null) {
+  sessionUser = user
+}
 
 const seed: Recipe[] = [
   {
@@ -43,6 +53,7 @@ let nextId = 1
 export function resetMockData() {
   recipes = new Map(seed.map((r) => [r.id, structuredClone(r)]))
   nextId = 1
+  sessionUser = mockUser
 }
 resetMockData()
 
@@ -64,7 +75,30 @@ function normalize(input: RecipeInput): RecipeInput | ApiError {
   }
 }
 
+const publicPaths = ['/api/health', '/api/info', '/api/session']
+
 export const handlers = [
+  // Like the real server: endpoints need a session unless they're public.
+  // Returning nothing passes the request on to the handlers below.
+  http.all('*/api/*', ({ request }) => {
+    if (sessionUser || publicPaths.includes(new URL(request.url).pathname)) return
+    return HttpResponse.json<ApiError>({ message: 'not logged in' }, { status: 401 })
+  }),
+
+  http.post<never, Credentials, User | ApiError>('*/api/session', async ({ request }) => {
+    const { username, password } = await request.json()
+    if (password !== mockPassword) {
+      return HttpResponse.json<ApiError>({ message: 'wrong username or password' }, { status: 401 })
+    }
+    sessionUser = username.trim().toLowerCase()
+    return HttpResponse.json<User>({ username: sessionUser })
+  }),
+  http.delete('*/api/session', () => {
+    sessionUser = null
+    return new HttpResponse(null, { status: 204 })
+  }),
+  http.get('*/api/me', () => HttpResponse.json<User>({ username: sessionUser! })),
+
   http.get('*/api/health', () => HttpResponse.json<Health>({ status: 'ok' })),
   http.get('*/api/info', () => HttpResponse.json<Info>({ version: 'v0.0.0-mock', commit: 'mock' })),
 
@@ -83,9 +117,9 @@ export const handlers = [
       ...content,
       id: `mock-${nextId++}`,
       createdAt: now,
-      createdBy: mockUser,
+      createdBy: sessionUser!,
       updatedAt: now,
-      updatedBy: mockUser,
+      updatedBy: sessionUser!,
     }
     recipes.set(recipe.id, recipe)
     return HttpResponse.json<Recipe>(recipe, {
@@ -109,7 +143,7 @@ export const handlers = [
       ...rest,
       ...content,
       updatedAt: new Date().toISOString(),
-      updatedBy: mockUser,
+      updatedBy: sessionUser!,
     }
     recipes.set(recipe.id, recipe)
     return HttpResponse.json<Recipe>(recipe)

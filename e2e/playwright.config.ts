@@ -1,7 +1,8 @@
 import { defineConfig, devices } from '@playwright/test'
 
 // End-to-end tests run against a running app: the real image in CI, or any
-// local server via BASE_URL (see README.md in this folder).
+// local server via BASE_URL (see the README). They log in as an account that
+// must exist on that server: E2E_USERNAME / E2E_PASSWORD (see tests/account.ts).
 export default defineConfig({
   testDir: './tests',
   fullyParallel: true, // tests create uniquely named recipes, so they don't collide
@@ -13,9 +14,19 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
-  // The app is meant for phones first.
   projects: [
-    { name: 'android', use: { ...devices['Pixel 8'] } },
-    { name: 'iphone', use: { ...devices['iPhone 15'] } },
+    // Logs in once; the other projects start from that session.
+    { name: 'login', testMatch: /login\.setup\.ts/ },
+    // The app is meant for phones first.
+    {
+      name: 'android',
+      use: { ...devices['Pixel 8'], storageState: '.auth/session.json' },
+      dependencies: ['login'],
+    },
+    {
+      name: 'iphone',
+      use: { ...devices['iPhone 15'], storageState: '.auth/session.json' },
+      dependencies: ['login'],
+    },
   ],
 })

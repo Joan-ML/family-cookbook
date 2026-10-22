@@ -1,12 +1,12 @@
 # Family Cookbook
 
-A lightweight web application for keeping a household's recipes in one shared place.
+A lightweight, self-hosted web application where family and friends keep their recipes in shared cookbooks.
 
 This application's main purpose is for me to finally try vibe coding. Its secondary purpose is to fulfill the goals stated below.
 
 ## Goals
 
-- **Shared vault.** Every recipe is visible to every user, and any user can edit any recipe. Everyone sees the same changes.
+- **Shared cookbooks.** Users create cookbooks and invite other users to them. All members of a cookbook see and edit its recipes, and everyone sees the same changes. Recipes are only visible to the members of their cookbook.
 - **Simple recipes.** Each recipe has:
   - a name
   - photos (optional)
@@ -21,8 +21,10 @@ This application's main purpose is for me to finally try vibe coding. Its second
 ## Non-goals
 
 - Exporting to other formats (PDF, print layouts, etc.)
-- Sharing recipes with people outside the household, or any social features
-- Private or per-user recipes and fine-grained permissions
+- Public sign-up, or sharing recipes with people who have no account (e.g. public links)
+- Social features: following, comments, ratings
+- Fine-grained permissions beyond cookbook admins and editors
+- Moving or copying recipes between cookbooks
 - Nutrition data, calorie counts, or scaling servings
 - Meal planning and shopping lists
 
@@ -84,39 +86,49 @@ We chose **SQLite** over MongoDB:
 
 The storage layer sits behind a small Go interface, so switching to another database later (e.g. PostgreSQL or MongoDB) won't affect the API or the frontend.
 
-### Users and access
+### Users, cookbooks and access
 
-Since everything is shared, accounts exist only to keep strangers out and to record who last edited a recipe. Users log in with a username and password and stay logged in through session cookies. There are no roles.
+The app is self-hosted for family and friends, and may be reachable from the internet.
 
-Recipes are built first and authentication second, but the app is designed for authentication from the start, so adding it later is a contained change:
+- **Accounts are created by the server admin,** the person running the server, from the command line (below). There is no public sign-up, and the server admin isn't a role inside the app.
+- **Users log in** with a username and password and stay logged in through a session cookie. Passwords are hashed with argon2id; sessions are stored on the server, so logging out or removing a user ends them immediately; repeated failed logins are slowed down.
+- **Cookbooks have two roles.** Whoever creates a cookbook becomes its **admin**. Admins invite existing users by username, remove members, change roles and delete the cookbook; **editors** create, edit and delete its recipes. A cookbook can have several admins, but always at least one: the last admin can't leave or be demoted. Anyone else can leave a cookbook.
+- **Cookbooks are private to their members.** For anyone else, a cookbook and its recipes don't exist: the API answers `404`, not `403`, so cookbooks can't be discovered.
+- **Until cookbooks exist (increment 2), every account sees every recipe.**
 
-- **Contract:** the spec declares a cookie-based security scheme that applies to every endpoint by default, and each endpoint documents a `401` response.
-- **Backend:** every route goes through authentication middleware. Until login exists, the middleware attaches a fixed development user, and handlers always read the current user from the request.
-- **Data:** recipes record `createdBy` and `updatedBy` from the start.
-- **No deployment until authentication exists.**
+The work is split into increments, each starting with its API contract: 1. authentication (done), 2. cookbooks and membership, 3. member management.
 
-There is no public sign-up. Accounts are managed with subcommands of the same binary, which run against the same database as the server (in Docker: `docker exec -it <container> cookbook user add <name>`):
+Accounts are managed with subcommands of the same binary, which run against the same database as the server (in Docker: `docker exec -it <container> cookbook user add <name>`):
 
 ```sh
 cookbook serve                  # run the web app (default)
-cookbook user add <username>    # passwords are always prompted, never passed as arguments
-cookbook user passwd <username> # reset a password
+cookbook user add <username>    # asks for the password twice, without echo
+cookbook user passwd <username> # set a new password; logs the user out everywhere
 cookbook user list
-cookbook user remove <username>
+cookbook user remove <username> # also logs the user out everywhere
 ```
+
+Passwords are never passed as arguments, where they'd end up in shell history. On a terminal they're typed (twice, without echo); otherwise one line is read from standard input, for scripts: `docker exec -i <container> cookbook user add <name> < password.txt`. Passwords need at least 10 characters. Usernames are 1–64 characters out of letters, digits, `.`, `_` and `-`, and ignore case.
 
 ### Running locally
 
-Requirements: Go 1.26+ and Node.js 22+. There is no recipe UI yet: the web page only shows whether it can reach the API, so try recipes through the API directly.
+Requirements: Go 1.26+ and Node.js 22+ (or the devcontainer, below).
 
-1. **Start the backend** (terminal 1). It creates `backend/data/cookbook.db` on first run.
+1. **Create an account** (once). It creates `backend/data/cookbook.db` if needed.
+
+   ```sh
+   cd backend
+   go run ./cmd/cookbook user add <your name>
+   ```
+
+2. **Start the backend** (terminal 1):
 
    ```sh
    cd backend
    go run ./cmd/cookbook
    ```
 
-2. **Start the frontend** (terminal 2), then open <http://localhost:5173>. It should show `API: ok`.
+3. **Start the frontend** (terminal 2), then open <http://localhost:5173> and log in:
 
    ```sh
    cd frontend
@@ -124,28 +136,23 @@ Requirements: Go 1.26+ and Node.js 22+. There is no recipe UI yet: the web page 
    npm run dev
    ```
 
-3. **Try the API** with curl (below), or import `api/openapi.yaml` into Bruno, Postman or a similar client, using `http://localhost:8080/api` as the base URL. Every request runs as the user `dev` until login exists.
+To try the API directly, log in once and keep the session cookie, with curl or a client such as Bruno or Postman (import `api/openapi.yaml`, base URL `http://localhost:8080/api`):
 
-   ```sh
-   API=http://localhost:8080/api
+```sh
+API=http://localhost:8080/api
+curl -c session.txt -X POST $API/session -H 'Content-Type: application/json' \
+  -d '{"username": "<your name>", "password": "<your password>"}'
 
-   curl -i -X POST $API/recipes -H 'Content-Type: application/json' -d '{
-     "name": "Pancakes",
-     "ingredients": ["200 g flour", "2 eggs", "300 ml milk"],
-     "steps": ["Whisk everything together.", "Fry in a hot pan."],
-     "tags": ["Breakfast", "vegetarian"],
-     "source": "Grandma"
-   }'                                   # 201; the Location header has the new recipe's URL
-
-   curl $API/recipes                    # list
-   curl $API/recipes/<id>               # get one
-   curl -X PUT $API/recipes/<id> -H 'Content-Type: application/json' -d '{...}'  # replace
-   curl -X DELETE $API/recipes/<id>     # delete
-   ```
+curl -b session.txt $API/recipes                 # list
+curl -b session.txt -X POST $API/recipes -H 'Content-Type: application/json' -d '{
+  "name": "Pancakes", "ingredients": ["200 g flour"], "steps": ["Fry."], "tags": ["breakfast"]
+}'                                                # create; the Location header has its URL
+curl -b session.txt -X DELETE $API/session        # log out
+```
 
 To start over with an empty database, stop the backend and delete `backend/data/`.
 
-To work on the frontend without the backend, run `npm run dev:mock` instead of step 1 and 2. The API is then mocked in the browser, with two sample recipes that reset on page reload.
+To work on the frontend without the backend, run `npm run dev:mock` instead of steps 1 and 2. The API is then mocked in the browser, with two sample recipes that reset on page reload; log in with any username and the password `cookbook password`.
 
 ### Development
 
@@ -180,11 +187,12 @@ npm run gen:api       # regenerate types after editing api/openapi.yaml
 npm run check:api     # fail if generated types are stale
 ```
 
-**End-to-end tests** (Node.js 22+), from `e2e/`. They drive the real app in phone-sized Chromium (Android) and WebKit (iPhone), through the real server and database. CI runs them against every image before publishing it. Each test creates uniquely named recipes and deletes them afterwards, so any running instance works, but prefer a scratch one:
+**End-to-end tests** (Node.js 22+), from `e2e/`. They drive the real app in phone-sized Chromium (Android) and WebKit (iPhone), through the real server and database. CI runs them against every image before publishing it. Each test creates uniquely named recipes and deletes them afterwards, so any running instance works, but prefer a scratch one. The tests log in as `E2E_USERNAME` / `E2E_PASSWORD` (default `e2e` / `e2e test password`), which must exist on that server:
 
 ```sh
 npm install                              # once
 npx playwright install chromium webkit   # once; downloads browsers to ~/.cache/ms-playwright
+(cd ../backend && echo 'e2e test password' | go run ./cmd/cookbook user add e2e)  # once per database
 BASE_URL=http://localhost:8080 npx playwright test          # against the image or `go run`
 BASE_URL=http://localhost:5173 npx playwright test          # or through Vite
 npx playwright test --project=android    # one browser only
@@ -245,7 +253,9 @@ docker run -d --name cookbook -p 8080:8080 -v cookbook-data:/data family-cookboo
 
 Use a named volume as above. To use a host directory instead, it must be writable by the container's user (UID 65532); with rootless Podman, add `:U` to the mount (`-v ./data:/data:U`).
 
-Until login exists, the image is for local use only: don't expose it to the internet.
+**First account.** After the first start, create your account inside the container: `docker exec -it cookbook cookbook user add <your name>`.
+
+**HTTPS.** Put the app behind a reverse proxy that provides HTTPS (e.g. Caddy) before letting people log in from elsewhere. The session cookie is marked `Secure`, so browsers only send it over HTTPS, except when the app is reached as `localhost`. If you must serve plain HTTP under another name (e.g. a LAN address), set `INSECURE_COOKIES=true`, knowing that passwords and sessions then travel unencrypted.
 
 ### Backups
 

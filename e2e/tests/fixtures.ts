@@ -13,6 +13,11 @@ type RecipeInput = {
 type Recipe = RecipeInput & { id: string }
 
 type Fixtures = {
+  /**
+   * API client logged in as the test account, for setting up and cleaning up
+   * data, even in tests whose page starts logged out.
+   */
+  api: APIRequestContext
   /** A suffix unique to this test, to keep its data apart from other tests'. */
   unique: string
   /** Creates a recipe through the API; it's deleted when the test ends. */
@@ -30,11 +35,17 @@ async function deleteByName(request: APIRequestContext, name: string) {
 }
 
 export const test = base.extend<Fixtures>({
+  api: async ({ playwright, baseURL }, use) => {
+    const api = await playwright.request.newContext({ baseURL, storageState: '.auth/session.json' })
+    await use(api)
+    await api.dispose()
+  },
+
   unique: async ({}, use, testInfo) => {
     await use(`${testInfo.project.name}-${testInfo.testId.slice(0, 6)}-${Date.now().toString(36)}`)
   },
 
-  createRecipe: async ({ request }, use) => {
+  createRecipe: async ({ api: request }, use) => {
     const created: string[] = []
     await use(async (input) => {
       const res = await request.post('/api/recipes', {
@@ -48,7 +59,7 @@ export const test = base.extend<Fixtures>({
     for (const id of created) await request.delete(`/api/recipes/${id}`)
   },
 
-  cleanUpByName: async ({ request }, use) => {
+  cleanUpByName: async ({ api: request }, use) => {
     const names: string[] = []
     await use((name) => names.push(name))
     for (const name of names) await deleteByName(request, name)

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"family-cookbook/backend/internal/api"
+	"family-cookbook/backend/internal/auth"
 	"family-cookbook/backend/internal/store/sqlite"
 	"family-cookbook/backend/internal/version"
 	"family-cookbook/backend/internal/web"
@@ -24,21 +25,31 @@ import (
 const usage = `Usage: cookbook [command]
 
 Commands:
-  serve            Run the web app (the default).
-  backup <file>    Write a consistent backup of the database to <file>,
-                   while the app keeps running. Use "-" for standard output.
+  serve                   Run the web app (the default).
+  backup <file>           Write a consistent backup of the database to <file>,
+                          while the app keeps running. Use "-" for standard output.
+  user add <username>     Create an account. Asks for the password.
+  user passwd <username>  Set a new password and log the user out everywhere.
+  user list               List accounts.
+  user remove <username>  Delete an account and log it out everywhere.
+
+Passwords are read from the terminal without echo, or as one line from
+standard input when it isn't a terminal (e.g. docker exec -i ... < file).
 
 Environment:
-  ADDR      Address to listen on (default ":8080").
-  DATA_DIR  Directory holding the database (default "data").
+  ADDR              Address to listen on (default ":8080").
+  DATA_DIR          Directory holding the database (default "data").
+  APP_VERSION       Release version to report, e.g. "v1.2.3".
+  INSECURE_COOKIES  "true" to send the session cookie over plain HTTP when the
+                    app isn't reached as localhost (not needed behind HTTPS).
 `
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
 // run executes a command and returns the process exit code.
-func run(args []string, stdout, stderr io.Writer) int {
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	cmd := "serve"
 	if len(args) > 0 {
 		cmd, args = args[0], args[1:]
@@ -51,6 +62,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = serve(envOr("ADDR", ":8080"), dataDir)
 	case cmd == "backup" && len(args) == 1:
 		err = backup(dataDir, args[0], stdout, stderr)
+	case cmd == "user" && len(args) == 2 && args[0] == "add":
+		err = userAdd(dataDir, args[1], stdin, stderr)
+	case cmd == "user" && len(args) == 2 && args[0] == "passwd":
+		err = userPasswd(dataDir, args[1], stdin, stderr)
+	case cmd == "user" && len(args) == 1 && args[0] == "list":
+		err = userList(dataDir, stdout)
+	case cmd == "user" && len(args) == 2 && args[0] == "remove":
+		err = userRemove(dataDir, args[1], stderr)
 	case cmd == "help" || cmd == "-h" || cmd == "--help":
 		fmt.Fprint(stdout, usage)
 		return 0
@@ -80,7 +99,8 @@ func serve(addr, dataDir string) error {
 	defer st.Close()
 
 	mux := http.NewServeMux()
-	mux.Handle("/api/", api.NewServer(st))
+	opts := api.Options{InsecureCookies: os.Getenv("INSECURE_COOKIES") == "true"}
+	mux.Handle("/api/", api.NewServer(st, auth.NewService(st, st, time.Now), opts))
 	if ui := web.Handler(); ui != nil {
 		mux.Handle("/", ui)
 	}

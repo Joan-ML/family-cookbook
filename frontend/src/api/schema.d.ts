@@ -41,6 +41,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Log in
+         * @description Starts a session and sets the `session` cookie (HttpOnly, SameSite=Lax,
+         *     and Secure unless the server is configured for plain HTTP). Unknown
+         *     usernames and wrong passwords get the same answer. After repeated
+         *     failures for a username, further attempts are refused for a while.
+         */
+        post: operations["logIn"];
+        /**
+         * Log out
+         * @description Ends the current session, if any, and clears the cookie. Always
+         *     succeeds, so it's safe to call when the session has already expired.
+         */
+        delete: operations["logOut"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The logged-in user
+         * @description The frontend calls this on start to know whether to show the login page.
+         */
+        get: operations["getMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/recipes": {
         parameters: {
             query?: never;
@@ -93,6 +141,14 @@ export interface components {
             version?: string;
             /** @description Commit the build came from, e.g. "abc1234", or "dev" when unknown. */
             commit: string;
+        };
+        Credentials: {
+            username: string;
+            /** Format: password */
+            password: string;
+        };
+        User: {
+            username: string;
         };
         Error: {
             /** @description Human-readable description of the problem. */
@@ -162,6 +218,17 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description Too many failed attempts; try again later. */
+        TooManyRequests: {
+            headers: {
+                /** @description Seconds to wait before trying again. */
+                "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description The request body exceeds the size limit (1 MiB for JSON). */
         PayloadTooLarge: {
             headers: {
@@ -219,6 +286,84 @@ export interface operations {
                     "application/json": components["schemas"]["Info"];
                 };
             };
+        };
+    };
+    logIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Credentials"];
+            };
+        };
+        responses: {
+            /** @description Logged in. */
+            200: {
+                headers: {
+                    /** @description The session cookie. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description Wrong username or password. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    logOut: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Logged out. */
+            204: {
+                headers: {
+                    /** @description Clears the session cookie. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The logged-in user. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
         };
     };
     listRecipes: {

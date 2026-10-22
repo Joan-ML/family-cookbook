@@ -45,9 +45,9 @@ func TestCreateAndGetRecipe(t *testing.T) {
 		Tags:        []string{"breakfast", "vegetarian"},
 		Source:      ptr("Grandma"),
 		CreatedAt:   testNow,
-		CreatedBy:   devUser,
+		CreatedBy:   testUser,
 		UpdatedAt:   testNow,
-		UpdatedBy:   devUser,
+		UpdatedBy:   testUser,
 	}
 	assertRecipe(t, created, want)
 

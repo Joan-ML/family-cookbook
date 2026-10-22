@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"family-cookbook/backend/internal/store"
@@ -305,6 +306,136 @@ func nonNil(s []string) []string {
 	return s
 }
 
+// timeFormat is RFC 3339 with all nine fractional digits, so stored times
+// have a fixed width and sort correctly as text (RFC3339Nano trims zeros).
+const timeFormat = "2006-01-02T15:04:05.000000000Z07:00"
+
 func formatTime(t time.Time) string {
-	return t.UTC().Format(time.RFC3339Nano)
+	return t.UTC().Format(timeFormat)
+}
+
+var (
+	_ store.Users    = (*Store)(nil)
+	_ store.Sessions = (*Store)(nil)
+)
+
+func (s *Store) CreateUser(ctx context.Context, username, passwordHash string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)`,
+		username, passwordHash, formatTime(at))
+	if err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		return store.ErrExists
+	}
+	return err
+}
+
+func (s *Store) GetUser(ctx context.Context, username string) (store.User, error) {
+	var u store.User
+	var createdAt string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, username, password_hash, created_at FROM users WHERE username = ?`, username).
+		Scan(&u.ID, &u.Username, &u.PasswordHash, &createdAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return store.User{}, store.ErrNotFound
+	}
+	if err != nil {
+		return store.User{}, err
+	}
+	u.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt)
+	return u, err
+}
+
+func (s *Store) ListUsers(ctx context.Context) ([]store.User, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, username, created_at FROM users ORDER BY username`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	users := []store.User{}
+	for rows.Next() {
+		var u store.User
+		var createdAt string
+		if err := rows.Scan(&u.ID, &u.Username, &createdAt); err != nil {
+			return nil, err
+		}
+		if u.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt); err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+func (s *Store) SetPassword(ctx context.Context, username, passwordHash string) error {
+	return s.withTx(ctx, func(tx *sql.Tx) error {
+		var id int64
+		err := tx.QueryRowContext(ctx,
+			`UPDATE users SET password_hash = ? WHERE username = ? RETURNING id`, passwordHash, username).Scan(&id)
+		if errors.Is(err, sql.ErrNoRows) {
+			return store.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, id)
+		return err
+	})
+}
+
+func (s *Store) DeleteUser(ctx context.Context, username string) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE username = ?`, username)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return store.ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) CreateSession(ctx context.Context, sess store.Session) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)`,
+		sess.TokenHash, sess.UserID, formatTime(sess.CreatedAt), formatTime(sess.ExpiresAt))
+	return err
+}
+
+func (s *Store) GetSession(ctx context.Context, tokenHash string) (store.Session, error) {
+	sess := store.Session{TokenHash: tokenHash}
+	var createdAt, expiresAt string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT s.user_id, u.username, s.created_at, s.expires_at
+		FROM sessions s JOIN users u ON u.id = s.user_id
+		WHERE s.token_hash = ?`, tokenHash).
+		Scan(&sess.UserID, &sess.Username, &createdAt, &expiresAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return store.Session{}, store.ErrNotFound
+	}
+	if err != nil {
+		return store.Session{}, err
+	}
+	if sess.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt); err != nil {
+		return store.Session{}, err
+	}
+	sess.ExpiresAt, err = time.Parse(time.RFC3339Nano, expiresAt)
+	return sess, err
+}
+
+func (s *Store) ExtendSession(ctx context.Context, tokenHash string, expiresAt time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET expires_at = ? WHERE token_hash = ?`, formatTime(expiresAt), tokenHash)
+	return err
+}
+
+func (s *Store) DeleteSession(ctx context.Context, tokenHash string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE token_hash = ?`, tokenHash)
+	return err
+}
+
+func (s *Store) DeleteExpiredSessions(ctx context.Context, now time.Time) error {
+	// Stored times are fixed-width UTC (see timeFormat), so text order is time order.
+	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at < ?`, formatTime(now))
+	return err
 }

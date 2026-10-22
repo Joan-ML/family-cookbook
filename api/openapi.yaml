@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Family Cookbook API
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Contract between the Go backend and the React frontend.
     Backend tests validate real responses against this file, and both sides
@@ -9,6 +9,7 @@ info:
 
     Conventions:
     - Every endpoint requires a session cookie unless it declares `security: []`.
+      Log in with `POST /session`; without a valid session, endpoints answer 401.
     - Errors use the `Error` schema.
     - Collections are returned as `{ "items": [...] }`, leaving room for
       pagination fields later.
@@ -43,6 +44,75 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Info"
+
+  /session:
+    post:
+      operationId: logIn
+      summary: Log in
+      description: |
+        Starts a session and sets the `session` cookie (HttpOnly, SameSite=Lax,
+        and Secure unless the server is configured for plain HTTP). Unknown
+        usernames and wrong passwords get the same answer. After repeated
+        failures for a username, further attempts are refused for a while.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Credentials"
+      responses:
+        "200":
+          description: Logged in.
+          headers:
+            Set-Cookie:
+              description: The session cookie.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Wrong username or password.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    delete:
+      operationId: logOut
+      summary: Log out
+      description: |
+        Ends the current session, if any, and clears the cookie. Always
+        succeeds, so it's safe to call when the session has already expired.
+      security: []
+      responses:
+        "204":
+          description: Logged out.
+          headers:
+            Set-Cookie:
+              description: Clears the session cookie.
+              schema:
+                type: string
+
+  /me:
+    get:
+      operationId: getMe
+      summary: The logged-in user
+      description: The frontend calls this on start to know whether to show the login page.
+      responses:
+        "200":
+          description: The logged-in user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /recipes:
     get:
@@ -171,6 +241,17 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    TooManyRequests:
+      description: Too many failed attempts; try again later.
+      headers:
+        Retry-After:
+          description: Seconds to wait before trying again.
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     PayloadTooLarge:
       description: The request body exceeds the size limit (1 MiB for JSON).
       content:
@@ -196,6 +277,27 @@ components:
           type: string
         commit:
           description: Commit the build came from, e.g. "abc1234", or "dev" when unknown.
+          type: string
+
+    Credentials:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 64
+        password:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          format: password
+
+    User:
+      type: object
+      required: [username]
+      properties:
+        username:
           type: string
 
     Error:

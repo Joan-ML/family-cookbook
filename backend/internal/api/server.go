@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"time"
 
+	"family-cookbook/backend/internal/auth"
 	"family-cookbook/backend/internal/store"
 	"family-cookbook/backend/internal/version"
 
@@ -31,22 +32,35 @@ const (
 // server implements StrictServerInterface.
 type server struct {
 	store store.Store
+	auth  *auth.Service
 	now   func() time.Time
 	newID func() string
 	// release and commit identify the running build; see package version.
 	release, commit string
+	// insecureCookies drops the Secure flag from cookies, for plain-HTTP setups.
+	insecureCookies bool
 }
 
 var _ StrictServerInterface = (*server)(nil)
 
+// Options configures NewServer.
+type Options struct {
+	// InsecureCookies lets the session cookie travel over plain HTTP. It's
+	// only needed when the app is reached over HTTP by a name other than
+	// localhost; behind an HTTPS reverse proxy, leave it off.
+	InsecureCookies bool
+}
+
 // NewServer returns the HTTP handler for the whole API, mounted under /api.
-func NewServer(st store.Store) http.Handler {
+func NewServer(st store.Store, a *auth.Service, opts Options) http.Handler {
 	return newHandler(&server{
-		store:   st,
-		now:     time.Now,
-		newID:   rand.Text,
-		release: version.Release(),
-		commit:  version.Commit(),
+		store:           st,
+		auth:            a,
+		now:             time.Now,
+		newID:           rand.Text,
+		release:         version.Release(),
+		commit:          version.Commit(),
+		insecureCookies: opts.InsecureCookies,
 	})
 }
 
@@ -67,7 +81,7 @@ func newHandler(s *server) http.Handler {
 		},
 	})
 
-	return limitBody(validateRequests(authenticate(routes)))
+	return limitBody(s.authenticate(validateRequests(routes)))
 }
 
 // validateRequests rejects requests that don't match the spec (unknown
@@ -81,35 +95,25 @@ func validateRequests(next http.Handler) http.Handler {
 		DoNotValidateServers: true,
 		Prefix:               basePath,
 		Options: openapi3filter.Options{
-			// Sessions are checked by authenticate, not by the validator.
-			AuthenticationFunc: openapi3filter.NoopAuthenticationFunc,
+			// The spec says which endpoints need a session (all but those with
+			// `security: []`); authenticate has already found the user, if any.
+			AuthenticationFunc: func(ctx context.Context, _ *openapi3filter.AuthenticationInput) error {
+				if currentUser(ctx) == "" {
+					return errNotLoggedIn
+				}
+				return nil
+			},
 		},
 		ErrorHandler: func(w http.ResponseWriter, message string, status int) {
+			if status == http.StatusUnauthorized {
+				message = errNotLoggedIn.Error()
+			}
 			writeError(w, status, message)
 		},
 	})(next)
 }
 
-type userKey struct{}
-
-// devUser is attached to every request until login exists.
-const devUser = "dev"
-
-// authenticate attaches the current user to the request context. It is a
-// placeholder: once login exists, it will read the session cookie and
-// reply 401 when there is no valid session.
-func authenticate(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := context.WithValue(r.Context(), userKey{}, devUser)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-// currentUser returns the username attached by authenticate.
-func currentUser(ctx context.Context) string {
-	user, _ := ctx.Value(userKey{}).(string)
-	return user
-}
+var errNotLoggedIn = errors.New("not logged in")
 
 // limitBody rejects bodies over maxBodyBytes with 413. It reads the body up
 // front: otherwise the validator, which reads it first, reports the overflow

@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -21,8 +22,9 @@ const specPath = "../../../api/openapi.yaml"
 // against the OpenAPI spec, so the backend can't drift from the contract
 // the frontend is built against.
 type contractServer struct {
-	ts     *httptest.Server
-	router routers.Router
+	ts      *httptest.Server
+	router  routers.Router
+	cookies []*http.Cookie // sent with every request
 }
 
 func newContractServer(t *testing.T, h http.Handler) *contractServer {
@@ -68,6 +70,9 @@ func (s *contractServer) send(t *testing.T, method, path string, body []byte, ch
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	for _, c := range s.cookies {
+		req.AddCookie(c)
 	}
 
 	route, pathParams, err := s.router.FindRoute(req)
@@ -115,4 +120,20 @@ func (s *contractServer) send(t *testing.T, method, path string, body []byte, ch
 
 	res.Body = io.NopCloser(bytes.NewReader(resBody))
 	return res
+}
+
+// logIn logs in through the API and keeps the session cookie for later requests.
+func (s *contractServer) logIn(t *testing.T, username, password string) {
+	t.Helper()
+	body := []byte(fmt.Sprintf(`{"username":%q,"password":%q}`, username, password))
+	res := s.do(t, http.MethodPost, "/api/session", body)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("logging in as %s: status %d", username, res.StatusCode)
+	}
+	s.cookies = res.Cookies()
+}
+
+// anonymous returns a client for the same server without a session.
+func (s *contractServer) anonymous() *contractServer {
+	return &contractServer{ts: s.ts, router: s.router}
 }

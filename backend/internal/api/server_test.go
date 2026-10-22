@@ -7,17 +7,35 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"family-cookbook/backend/internal/auth"
 	"family-cookbook/backend/internal/store/sqlite"
 )
 
 // testNow is the fixed clock used by test servers; tests advance it with tick.
 var testNow = time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 
+// The user every test server has, and is logged in as.
+const (
+	testUser     = "dev"
+	testPassword = "test password 123"
+)
+
+// testUserHash is computed once: argon2id is deliberately slow.
+var testUserHash = sync.OnceValue(func() string {
+	h, err := auth.HashPassword(testPassword)
+	if err != nil {
+		panic(err)
+	}
+	return h
+})
+
 // newTestServer returns a contract-checked server backed by a fresh SQLite
-// database, with a controllable clock and predictable IDs.
+// database, with a controllable clock and predictable IDs, logged in as
+// testUser. Use srv.anonymous() for requests without a session.
 func newTestServer(t *testing.T) (*contractServer, *server) {
 	t.Helper()
 
@@ -26,6 +44,9 @@ func newTestServer(t *testing.T) (*contractServer, *server) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
+	if err := st.CreateUser(t.Context(), testUser, testUserHash(), testNow); err != nil {
+		t.Fatal(err)
+	}
 
 	now := testNow
 	ids := 0
@@ -34,7 +55,12 @@ func newTestServer(t *testing.T) (*contractServer, *server) {
 		now:   func() time.Time { return now },
 		newID: func() string { ids++; return fmt.Sprintf("r%d", ids) },
 	}
-	return newContractServer(t, newHandler(s)), s
+	// Sessions follow the same clock, which tick moves.
+	s.auth = auth.NewService(st, st, func() time.Time { return s.now() })
+
+	srv := newContractServer(t, newHandler(s))
+	srv.logIn(t, testUser, testPassword)
+	return srv, s
 }
 
 // tick advances a test server's clock.

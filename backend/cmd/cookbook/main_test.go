@@ -52,7 +52,7 @@ func TestBackupToFile(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "backup.db")
 	var stdout, stderr bytes.Buffer
 
-	code := run([]string{"backup", dest}, &stdout, &stderr)
+	code := run([]string{"backup", dest}, strings.NewReader(""), &stdout, &stderr)
 
 	if code != 0 {
 		t.Fatalf("exit code %d; stderr: %s", code, &stderr)
@@ -65,7 +65,7 @@ func TestBackupToStdout(t *testing.T) {
 	t.Setenv("DATA_DIR", dataDir)
 	var stdout, stderr bytes.Buffer
 
-	code := run([]string{"backup", "-"}, &stdout, &stderr)
+	code := run([]string{"backup", "-"}, strings.NewReader(""), &stdout, &stderr)
 
 	if code != 0 {
 		t.Fatalf("exit code %d; stderr: %s", code, &stderr)
@@ -92,7 +92,7 @@ func TestBackupWithoutDatabaseFails(t *testing.T) {
 	t.Setenv("DATA_DIR", dataDir)
 	var stdout, stderr bytes.Buffer
 
-	code := run([]string{"backup", filepath.Join(t.TempDir(), "x.db")}, &stdout, &stderr)
+	code := run([]string{"backup", filepath.Join(t.TempDir(), "x.db")}, strings.NewReader(""), &stdout, &stderr)
 
 	if code != 1 || !strings.Contains(stderr.String(), "no database") {
 		t.Errorf("exit code %d, stderr %q; want 1 and a clear message", code, &stderr)
@@ -118,7 +118,7 @@ func TestUsage(t *testing.T) {
 		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 
-			code := run(tt.args, &stdout, &stderr)
+			code := run(tt.args, strings.NewReader(""), &stdout, &stderr)
 
 			if code != tt.code {
 				t.Errorf("exit code %d, want %d", code, tt.code)
