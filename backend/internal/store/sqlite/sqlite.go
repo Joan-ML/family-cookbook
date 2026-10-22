@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io/fs"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sort"
 	"time"
 
@@ -48,6 +50,50 @@ func Open(path string) (*Store, error) {
 
 func (s *Store) Close() error {
 	return s.db.Close()
+}
+
+// Backup writes a consistent copy of the database to path while it stays in
+// use, and checks the copy before keeping it. It refuses to overwrite an
+// existing file.
+func (s *Store) Backup(ctx context.Context, path string) error {
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("%s already exists", path)
+	}
+	// Write next to the destination, then rename: a failed backup never
+	// leaves a partial file behind under the final name.
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".backup-*.db")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	tmp.Close()
+	os.Remove(tmpPath) // VACUUM INTO needs the target not to exist
+	defer os.Remove(tmpPath)
+
+	if _, err := s.db.ExecContext(ctx, `VACUUM INTO ?`, tmpPath); err != nil {
+		return fmt.Errorf("writing backup: %w", err)
+	}
+	if err := checkIntegrity(ctx, tmpPath); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
+}
+
+// checkIntegrity runs SQLite's integrity check on the database file at path.
+func checkIntegrity(ctx context.Context, path string) error {
+	db, err := sql.Open("sqlite", "file:"+(&url.URL{Path: path}).EscapedPath()+"?mode=ro")
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	var result string
+	if err := db.QueryRowContext(ctx, "PRAGMA quick_check").Scan(&result); err != nil {
+		return fmt.Errorf("checking backup: %w", err)
+	}
+	if result != "ok" {
+		return fmt.Errorf("backup failed its integrity check: %s", result)
+	}
+	return nil
 }
 
 // migrate applies migrations/NNN_*.sql in order, tracking progress in

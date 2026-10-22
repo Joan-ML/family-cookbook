@@ -26,7 +26,7 @@ COPY --from=frontend /src/frontend/dist ./internal/web/dist
 ARG COMMIT=dev
 RUN CGO_ENABLED=0 go build -tags embedui -trimpath \
         -ldflags="-s -w -X family-cookbook/backend/internal/version.commit=$COMMIT" \
-        -o /out/cookbook ./cmd/server \
+        -o /out/cookbook ./cmd/cookbook \
     && mkdir /out/data
 
 # --- Runtime -----------------------------------------------------------------

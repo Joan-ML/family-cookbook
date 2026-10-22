@@ -35,7 +35,7 @@ family-cookbook/
 ├── api/
 │   └── openapi.yaml   # API contract shared by backend and frontend
 ├── backend/           # Go HTTP API
-│   ├── cmd/server/    # entry point
+│   ├── cmd/cookbook/  # the binary: serve, backup
 │   └── internal/
 │       ├── api/       # handlers, generated code, contract tests
 │       ├── store/     # storage interface; sqlite/ implements it
@@ -113,7 +113,7 @@ Requirements: Go 1.26+ and Node.js 22+. There is no recipe UI yet: the web page 
 
    ```sh
    cd backend
-   go run ./cmd/server
+   go run ./cmd/cookbook
    ```
 
 2. **Start the frontend** (terminal 2), then open <http://localhost:5173>. It should show `API: ok`.
@@ -163,7 +163,7 @@ Each package is self-contained and uses its own tools.
 **Backend** (Go 1.26+), from `backend/`:
 
 ```sh
-go run ./cmd/server   # API on :8080 (env: ADDR, DATA_DIR, default "data")
+go run ./cmd/cookbook # API on :8080 (env: ADDR, DATA_DIR, default "data")
 go test ./...         # tests, including contract validation
 go generate ./...     # regenerate code after editing api/openapi.yaml
 ```
@@ -245,9 +245,73 @@ docker run -d --name cookbook -p 8080:8080 -v cookbook-data:/data family-cookboo
 
 Use a named volume as above. To use a host directory instead, it must be writable by the container's user (UID 65532); with rootless Podman, add `:U` to the mount (`-v ./data:/data:U`).
 
-To back up, copy `cookbook.db` from the volume while the container is stopped. The `.db-wal` and `.db-shm` files next to it are only present while it runs.
-
 Until login exists, the image is for local use only: don't expose it to the internet.
+
+### Backups
+
+Don't copy `cookbook.db` while the app runs: recent changes live in `cookbook.db-wal` until SQLite folds them in, so a plain copy can be stale or corrupt. Instead, `cookbook backup` writes a consistent snapshot while the app keeps serving, checks it, and streams it out of the container:
+
+```sh
+docker exec cookbook cookbook backup - > cookbook-$(date +%F).db
+```
+
+The result is a single, self-contained SQLite file (no `-wal`/`-shm` companions).
+
+**Nightly, off the machine.** On the server, a systemd timer can take a snapshot and send it elsewhere with [restic](https://restic.net) (encrypted, deduplicated, with retention rules). This assumes a restic repository already initialised (`restic init`), with its location and password in `/etc/cookbook-backup.env` (`RESTIC_REPOSITORY=...`, `RESTIC_PASSWORD=...`):
+
+```sh
+#!/bin/sh
+# /usr/local/bin/cookbook-backup
+set -eu
+dir=/var/backups/cookbook
+file="$dir/cookbook-$(date +%F).db"
+trap 'rm -f "$file.tmp"' EXIT
+mkdir -p "$dir"
+docker exec cookbook cookbook backup - > "$file.tmp"   # only a complete backup
+mv "$file.tmp" "$file"                                  # gets the final name
+find "$dir" -name 'cookbook-*.db' -mtime +14 -delete    # local copies: two weeks
+restic backup "$dir"
+restic forget --prune --keep-daily 7 --keep-weekly 4 --keep-monthly 12
+```
+
+```ini
+# /etc/systemd/system/cookbook-backup.service
+[Unit]
+Description=Back up the Family Cookbook database
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/cookbook-backup.env
+ExecStart=/usr/local/bin/cookbook-backup
+```
+
+```ini
+# /etc/systemd/system/cookbook-backup.timer
+[Unit]
+Description=Back up the Family Cookbook database daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+Enable it with `systemctl enable --now cookbook-backup.timer`. Keep at least one copy off the server (another machine, cloud storage), and back up `/data/photos` the same way once photos exist.
+
+**Restoring.** Stop the app, put the backup in place, and remove the old `-wal`/`-shm` files, which would otherwise be replayed on top of it:
+
+```sh
+docker stop cookbook
+docker run --rm -v cookbook-data:/data -v "$PWD":/backup:ro alpine sh -c \
+  'rm -f /data/cookbook.db-wal /data/cookbook.db-shm &&
+   cp /backup/cookbook-2026-10-22.db /data/cookbook.db &&
+   chown 65532:65532 /data/cookbook.db'
+docker start cookbook
+```
+
+On SELinux hosts (e.g. Fedora), mount the backup folder with `:ro,Z`. After a restart, wait for `/api/health` to answer before checking the data. Try a restore now and then, e.g. into a scratch volume: a backup you've never restored is a guess.
 
 ### Versioning and releases
 
