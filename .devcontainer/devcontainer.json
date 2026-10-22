@@ -1,0 +1,29 @@
+// Development environment for the whole monorepo: Go, Node and Playwright's
+// browsers on Ubuntu 24.04, the same OS as CI and the one Playwright targets.
+//
+// VS Code: "Dev Containers: Reopen in Container".
+// CLI:     npx @devcontainers/cli up --workspace-folder .
+// With rootless Podman, set the Docker path to `podman` (VS Code setting
+// dev.containers.dockerPath, or the CLI's --docker-path).
+{
+  "name": "Family Cookbook",
+  "build": { "dockerfile": "Dockerfile" },
+  // Rootless Podman: keep your user ID inside the container so files in the
+  // workspace stay owned by you, and skip SELinux relabeling of the workspace.
+  "runArgs": ["--userns=keep-id", "--security-opt=label=disable"],
+  "remoteUser": "vscode",
+  "containerUser": "vscode",
+  "updateRemoteUserUID": false,
+  "containerEnv": { "HOME": "/home/vscode" },
+  "postCreateCommand": ".devcontainer/post-create.sh",
+  "forwardPorts": [8080, 5173],
+  "portsAttributes": {
+    "8080": { "label": "Backend (and image)" },
+    "5173": { "label": "Vite dev server" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["golang.go", "ms-playwright.playwright", "oxc.oxc-vscode"]
+    }
+  }
+}

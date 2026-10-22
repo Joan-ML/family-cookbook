@@ -149,6 +149,15 @@ To work on the frontend without the backend, run `npm run dev:mock` instead of s
 
 ### Development
 
+**Devcontainer (recommended).** `.devcontainer/` describes the whole environment: Ubuntu 24.04 (as in CI) with pinned Go and Node, and Playwright's Chromium and WebKit with their system libraries baked into the image. It works with rootless Podman: your user ID is kept inside the container, so files stay yours.
+
+- VS Code: "Dev Containers: Reopen in Container" (with Podman, set `dev.containers.dockerPath` to `podman`).
+- CLI: `npx @devcontainers/cli up --workspace-folder .`, then `npx @devcontainers/cli exec --workspace-folder . <command>`.
+
+The first build takes a few minutes, mostly the browsers; creating a container from the cached image then takes under a minute.
+
+When driving the host's Podman from inside a toolbox (e.g. through a `flatpak-spawn --host podman` wrapper), creating a new container can stall right after "Container started": `podman events` output doesn't make it through `flatpak-spawn`, and the CLI waits for it. Stop it and run `up` again; the existing container is picked up and setup continues.
+
 Each package is self-contained and uses its own tools.
 
 **Backend** (Go 1.26+), from `backend/`:
@@ -182,7 +191,7 @@ npx playwright test --project=android    # one browser only
 npm run report                           # HTML report of the last run
 ```
 
-Playwright's WebKit is built for Ubuntu and needs library versions that other distributions (e.g. Fedora) don't ship, so it may not start locally; use `--project=android` there and let CI run both.
+Playwright's WebKit is built for Ubuntu and needs library versions that other distributions (e.g. Fedora) don't ship, so outside the devcontainer it may not start; use the devcontainer, or `--project=android` and let CI run both.
 
 Local data (the SQLite file and photos) lives in `data/`, which git ignores.
 
