@@ -4,23 +4,24 @@ import type { Recipe, RecipeInput } from '../api/client'
 import { createRecipe, getRecipe, updateRecipe } from '../api/recipes'
 import { Loading, LoadError } from '../components'
 import { newStep, type Step } from '../steps'
+import { paths } from '../paths'
 import { useLoad } from '../useLoad'
 import { NotFound } from './NotFound'
 import { StepsField } from './StepsField'
 
-/** Create a recipe, or edit one when `id` is given. */
-export function RecipeFormPage({ id }: { id?: string }) {
-  if (!id) return <RecipeForm />
-  return <EditRecipe id={id} />
+/** Create a recipe in a cookbook, or edit one when `id` is given. */
+export function RecipeFormPage({ cookbookId, id }: { cookbookId: string; id?: string }) {
+  if (!id) return <RecipeForm cookbookId={cookbookId} />
+  return <EditRecipe cookbookId={cookbookId} id={id} />
 }
 
-function EditRecipe({ id }: { id: string }) {
-  const recipe = useLoad(() => getRecipe(id), id)
+function EditRecipe({ cookbookId, id }: { cookbookId: string; id: string }) {
+  const recipe = useLoad(() => getRecipe(cookbookId, id), `${cookbookId}/${id}`)
 
   if (recipe.status === 'loading') return <Loading />
   if (recipe.status === 'error') return <LoadError message={recipe.message} onRetry={recipe.reload} />
   if (!recipe.data) return <NotFound what="recipe" />
-  return <RecipeForm recipe={recipe.data} />
+  return <RecipeForm cookbookId={cookbookId} recipe={recipe.data} />
 }
 
 // The form edits plain strings; ingredients are one per line and tags are
@@ -56,7 +57,7 @@ function toInput(f: Fields): RecipeInput {
   }
 }
 
-function RecipeForm({ recipe }: { recipe?: Recipe }) {
+function RecipeForm({ cookbookId, recipe }: { cookbookId: string; recipe?: Recipe }) {
   const [, navigate] = useLocation()
   const [fields, setFields] = useState(() => toFields(recipe))
   const [saving, setSaving] = useState(false)
@@ -69,15 +70,17 @@ function RecipeForm({ recipe }: { recipe?: Recipe }) {
     setSaving(true)
     setError('')
     try {
-      const saved = recipe ? await updateRecipe(recipe.id, toInput(fields)) : await createRecipe(toInput(fields))
-      navigate(`/recipes/${encodeURIComponent(saved.id)}`, { replace: true })
+      const saved = recipe
+        ? await updateRecipe(cookbookId, recipe.id, toInput(fields))
+        : await createRecipe(cookbookId, toInput(fields))
+      navigate(paths.recipe(cookbookId, saved.id), { replace: true })
     } catch (err) {
       setError((err as Error).message)
       setSaving(false)
     }
   }
 
-  const cancelHref = recipe ? `/recipes/${encodeURIComponent(recipe.id)}` : '/'
+  const cancelHref = recipe ? paths.recipe(cookbookId, recipe.id) : paths.cookbook(cookbookId)
 
   return (
     <form className="recipe-form" onSubmit={onSubmit}>

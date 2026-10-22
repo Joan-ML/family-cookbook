@@ -120,14 +120,14 @@ func TestEndpointsNeedASessionUnlessPublic(t *testing.T) {
 	srv, _ := newTestServer(t)
 	anon := srv.anonymous()
 
-	for _, path := range []string{"/api/recipes", "/api/recipes/r1", "/api/me"} {
+	for _, path := range []string{"/api/cookbooks", srv.book, srv.book + "/recipes", srv.book + "/recipes/r1", "/api/me"} {
 		res := anon.do(t, http.MethodGet, path, nil)
 		wantStatus(t, res, http.StatusUnauthorized)
 		if got := decode[Error](t, res).Message; got != "not logged in" {
 			t.Errorf("%s: message = %q", path, got)
 		}
 	}
-	res := anon.do(t, http.MethodPost, "/api/recipes", mustJSON(t, pancakes()))
+	res := anon.do(t, http.MethodPost, srv.book+"/recipes", mustJSON(t, pancakes()))
 	wantStatus(t, res, http.StatusUnauthorized)
 
 	for _, path := range []string{"/api/health", "/api/info"} {

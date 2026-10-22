@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -102,7 +104,7 @@ func userRemove(dataDir, name string, stderr io.Writer) error {
 		return err
 	}
 	defer st.Close()
-	err = st.DeleteUser(context.Background(), username)
+	removal, err := st.DeleteUser(context.Background(), username)
 	if errors.Is(err, store.ErrNotFound) {
 		return fmt.Errorf("no user %s", username)
 	}
@@ -110,6 +112,12 @@ func userRemove(dataDir, name string, stderr io.Writer) error {
 		return err
 	}
 	fmt.Fprintf(stderr, "removed user %s and logged them out everywhere\n", username)
+	for _, name := range removal.DeletedCookbooks {
+		fmt.Fprintf(stderr, "deleted cookbook %q, which had no other members\n", name)
+	}
+	for _, name := range slices.Sorted(maps.Keys(removal.Promoted)) {
+		fmt.Fprintf(stderr, "made %s an admin of %q, which had no other admin\n", removal.Promoted[name], name)
+	}
 	return nil
 }
 

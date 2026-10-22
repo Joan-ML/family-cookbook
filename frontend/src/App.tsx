@@ -3,6 +3,8 @@ import { Link, Route, Switch } from 'wouter'
 import { useAuth } from './auth'
 import { AuthProvider } from './AuthProvider'
 import { Footer, Loading } from './components'
+import { CookbookListPage } from './pages/CookbookListPage'
+import { CookbookSettingsPage } from './pages/CookbookSettingsPage'
 import { LoginPage } from './pages/LoginPage'
 import { NotFound } from './pages/NotFound'
 import { RecipeListPage } from './pages/RecipeListPage'
@@ -54,10 +56,22 @@ function Content() {
   return (
     <Suspense fallback={<Loading />}>
       <Switch>
-        <Route path="/" component={RecipeListPage} />
-        <Route path="/new">{() => <RecipeFormPage />}</Route>
-        <Route path="/recipes/:id/edit">{(params) => <RecipeFormPage key={params.id} id={params.id} />}</Route>
-        <Route path="/recipes/:id">{(params) => <RecipePage key={params.id} id={params.id} />}</Route>
+        <Route path="/" component={CookbookListPage} />
+        <Route path="/cookbooks/:cookbook">
+          {(p) => <RecipeListPage key={p.cookbook} cookbookId={p.cookbook} />}
+        </Route>
+        <Route path="/cookbooks/:cookbook/settings">
+          {(p) => <CookbookSettingsPage key={p.cookbook} cookbookId={p.cookbook} />}
+        </Route>
+        <Route path="/cookbooks/:cookbook/new">
+          {(p) => <RecipeFormPage key={p.cookbook} cookbookId={p.cookbook} />}
+        </Route>
+        <Route path="/cookbooks/:cookbook/recipes/:recipe/edit">
+          {(p) => <RecipeFormPage key={p.recipe} cookbookId={p.cookbook} id={p.recipe} />}
+        </Route>
+        <Route path="/cookbooks/:cookbook/recipes/:recipe">
+          {(p) => <RecipePage key={p.recipe} cookbookId={p.cookbook} id={p.recipe} />}
+        </Route>
         <Route>
           <NotFound />
         </Route>

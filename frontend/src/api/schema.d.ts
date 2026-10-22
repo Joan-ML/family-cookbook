@@ -89,17 +89,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/recipes": {
+    "/cookbooks": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List all recipes */
+        /** The cookbooks you're a member of */
+        get: operations["listCookbooks"];
+        put?: never;
+        /**
+         * Create a cookbook
+         * @description You become its admin, and its only member until you invite others.
+         */
+        post: operations["createCookbook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cookbooks/{cookbookId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cookbookId: components["parameters"]["CookbookId"];
+            };
+            cookie?: never;
+        };
+        /** Get a cookbook */
+        get: operations["getCookbook"];
+        /** Rename a cookbook (admins only) */
+        put: operations["renameCookbook"];
+        post?: never;
+        /** Delete a cookbook and all its recipes (admins only) */
+        delete: operations["deleteCookbook"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cookbooks/{cookbookId}/recipes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cookbookId: components["parameters"]["CookbookId"];
+            };
+            cookie?: never;
+        };
+        /** List a cookbook's recipes */
         get: operations["listRecipes"];
         put?: never;
-        /** Create a recipe */
+        /** Create a recipe in a cookbook */
         post: operations["createRecipe"];
         delete?: never;
         options?: never;
@@ -107,11 +151,12 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/recipes/{recipeId}": {
+    "/cookbooks/{cookbookId}/recipes/{recipeId}": {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                cookbookId: components["parameters"]["CookbookId"];
                 recipeId: components["parameters"]["RecipeId"];
             };
             cookie?: never;
@@ -149,6 +194,33 @@ export interface components {
         };
         User: {
             username: string;
+        };
+        /**
+         * @description Your role in a cookbook. Admins also manage its members, rename it and
+         *     delete it; editors create, edit and delete its recipes.
+         * @enum {string}
+         */
+        Role: "admin" | "editor";
+        CookbookInput: {
+            name: string;
+        };
+        Cookbook: {
+            id: string;
+            name: string;
+            role: components["schemas"]["Role"];
+            /** Format: date-time */
+            createdAt: string;
+            /** @description Username of the user who created the cookbook. */
+            createdBy: string;
+        };
+        CookbookSummary: {
+            id: string;
+            name: string;
+            role: components["schemas"]["Role"];
+            recipeCount: number;
+        };
+        CookbookList: {
+            items: components["schemas"]["CookbookSummary"][];
         };
         Error: {
             /** @description Human-readable description of the problem. */
@@ -209,7 +281,19 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description The resource does not exist. */
+        /** @description You're a member, but your role doesn't allow this. */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description The resource does not exist, or belongs to a cookbook you're not a
+         *     member of: the two are indistinguishable, so cookbooks can't be discovered.
+         */
         NotFound: {
             headers: {
                 [name: string]: unknown;
@@ -240,6 +324,7 @@ export interface components {
         };
     };
     parameters: {
+        CookbookId: string;
         RecipeId: string;
     };
     requestBodies: never;
@@ -366,7 +451,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
-    listRecipes: {
+    listCookbooks: {
         parameters: {
             query?: never;
             header?: never;
@@ -375,7 +460,135 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description All recipes, sorted by name. */
+            /** @description Your cookbooks, sorted by name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CookbookList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createCookbook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CookbookInput"];
+            };
+        };
+        responses: {
+            /** @description The created cookbook. */
+            201: {
+                headers: {
+                    /** @description URL of the new cookbook. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cookbook"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getCookbook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cookbookId: components["parameters"]["CookbookId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cookbook. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cookbook"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    renameCookbook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cookbookId: components["parameters"]["CookbookId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CookbookInput"];
+            };
+        };
+        responses: {
+            /** @description The renamed cookbook. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cookbook"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteCookbook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cookbookId: components["parameters"]["CookbookId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cookbook and its recipes were deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listRecipes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cookbookId: components["parameters"]["CookbookId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cookbook's recipes, sorted by name. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -385,13 +598,16 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     createRecipe: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                cookbookId: components["parameters"]["CookbookId"];
+            };
             cookie?: never;
         };
         requestBody: {
@@ -413,6 +629,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
             413: components["responses"]["PayloadTooLarge"];
         };
     };
@@ -421,6 +638,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                cookbookId: components["parameters"]["CookbookId"];
                 recipeId: components["parameters"]["RecipeId"];
             };
             cookie?: never;
@@ -445,6 +663,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                cookbookId: components["parameters"]["CookbookId"];
                 recipeId: components["parameters"]["RecipeId"];
             };
             cookie?: never;
@@ -475,6 +694,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                cookbookId: components["parameters"]["CookbookId"];
                 recipeId: components["parameters"]["RecipeId"];
             };
             cookie?: never;

@@ -3,29 +3,30 @@ import { Link, useLocation } from 'wouter'
 import type { Recipe } from '../api/client'
 import { deleteRecipe, getRecipe } from '../api/recipes'
 import { Loading, LoadError, TagList } from '../components'
+import { paths } from '../paths'
 import { useLoad } from '../useLoad'
 import { NotFound } from './NotFound'
 
-export function RecipePage({ id }: { id: string }) {
-  const recipe = useLoad(() => getRecipe(id), id)
+export function RecipePage({ cookbookId, id }: { cookbookId: string; id: string }) {
+  const recipe = useLoad(() => getRecipe(cookbookId, id), `${cookbookId}/${id}`)
 
   if (recipe.status === 'loading') return <Loading />
   if (recipe.status === 'error') return <LoadError message={recipe.message} onRetry={recipe.reload} />
   if (!recipe.data) return <NotFound what="recipe" />
-  return <RecipeView recipe={recipe.data} />
+  return <RecipeView recipe={recipe.data} cookbookId={cookbookId} />
 }
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
 
-function RecipeView({ recipe }: { recipe: Recipe }) {
+function RecipeView({ recipe, cookbookId }: { recipe: Recipe; cookbookId: string }) {
   const [, navigate] = useLocation()
   const [deleteError, setDeleteError] = useState('')
 
   async function onDelete() {
     if (!window.confirm(`Delete "${recipe.name}"? This can't be undone.`)) return
     try {
-      await deleteRecipe(recipe.id)
-      navigate('/', { replace: true })
+      await deleteRecipe(cookbookId, recipe.id)
+      navigate(paths.cookbook(cookbookId), { replace: true })
     } catch (err) {
       setDeleteError((err as Error).message)
     }
@@ -33,11 +34,11 @@ function RecipeView({ recipe }: { recipe: Recipe }) {
 
   return (
     <article className="recipe">
-      <Link className="back" href="/">
+      <Link className="back" href={paths.cookbook(cookbookId)}>
         ← All recipes
       </Link>
       <h1>{recipe.name}</h1>
-      <TagList tags={recipe.tags} />
+      <TagList tags={recipe.tags} cookbookId={cookbookId} />
       {recipe.source && (
         <p className="muted">
           Source: <Source source={recipe.source} />
@@ -80,7 +81,7 @@ function RecipeView({ recipe }: { recipe: Recipe }) {
         </p>
       )}
       <div className="actions">
-        <Link className="button primary" href={`/recipes/${encodeURIComponent(recipe.id)}/edit`}>
+        <Link className="button primary" href={paths.editRecipe(cookbookId, recipe.id)}>
           Edit
         </Link>
         <button type="button" className="button danger" onClick={onDelete}>

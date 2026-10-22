@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"family-cookbook/backend/internal/store/sqlite"
+
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/getkin/kin-openapi/routers"
@@ -25,6 +27,10 @@ type contractServer struct {
 	ts      *httptest.Server
 	router  routers.Router
 	cookies []*http.Cookie // sent with every request
+	db      *sqlite.Store  // for setting up users in tests
+	// book is the API path of a cookbook the client's user is admin of,
+	// e.g. "/api/cookbooks/r1"; recipe tests run inside it.
+	book string
 }
 
 func newContractServer(t *testing.T, h http.Handler) *contractServer {
@@ -135,5 +141,27 @@ func (s *contractServer) logIn(t *testing.T, username, password string) {
 
 // anonymous returns a client for the same server without a session.
 func (s *contractServer) anonymous() *contractServer {
-	return &contractServer{ts: s.ts, router: s.router}
+	return &contractServer{ts: s.ts, router: s.router, db: s.db}
+}
+
+// asUser creates another account and returns a client logged in as it. The
+// new user isn't a member of any cookbook.
+func (s *contractServer) asUser(t *testing.T, username string) *contractServer {
+	t.Helper()
+	if err := s.db.CreateUser(t.Context(), username, testUserHash(), testNow); err != nil {
+		t.Fatal(err)
+	}
+	other := s.anonymous()
+	other.logIn(t, username, testPassword)
+	return other
+}
+
+// newCookbook creates a cookbook through the API and returns its API path.
+func (s *contractServer) newCookbook(t *testing.T, name string) string {
+	t.Helper()
+	res := s.do(t, http.MethodPost, "/api/cookbooks", []byte(fmt.Sprintf(`{"name":%q}`, name)))
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("creating cookbook %q: status %d", name, res.StatusCode)
+	}
+	return res.Header.Get("Location")
 }

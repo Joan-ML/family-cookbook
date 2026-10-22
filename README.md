@@ -72,7 +72,7 @@ Shipping as one image is a deployment choice. In development, the backend and fr
 ### Frontend: React
 
 - React + TypeScript, built with Vite.
-- Mobile-first, responsive layout with a small set of views: recipe list (with search and tag filter), recipe detail, recipe edit/create.
+- Mobile-first, responsive layout with a small set of views: your cookbooks, a cookbook's recipes (with search and tag filter), recipe detail, recipe edit/create, cookbook settings, and the login page.
 - Plain CSS or a minimal utility layer. No heavy UI framework.
 
 ### Database: SQLite
@@ -94,9 +94,9 @@ The app is self-hosted for family and friends, and may be reachable from the int
 - **Users log in** with a username and password and stay logged in through a session cookie. Passwords are hashed with argon2id; sessions are stored on the server, so logging out or removing a user ends them immediately; repeated failed logins are slowed down.
 - **Cookbooks have two roles.** Whoever creates a cookbook becomes its **admin**. Admins invite existing users by username, remove members, change roles and delete the cookbook; **editors** create, edit and delete its recipes. A cookbook can have several admins, but always at least one: the last admin can't leave or be demoted. Anyone else can leave a cookbook.
 - **Cookbooks are private to their members.** For anyone else, a cookbook and its recipes don't exist: the API answers `404`, not `403`, so cookbooks can't be discovered.
-- **Until cookbooks exist (increment 2), every account sees every recipe.**
+- **Removing an account never leaves a cookbook without an admin.** Cookbooks the user was the only member of are deleted with their recipes; where they were the last admin, the longest-standing remaining member becomes admin. `cookbook user remove` lists what it changed. Recipes keep showing who created and last edited them, as history, even after that account is gone.
 
-The work is split into increments, each starting with its API contract: 1. authentication (done), 2. cookbooks and membership, 3. member management.
+The work is split into increments, each starting with its API contract: 1. authentication (done), 2. cookbooks and membership (done), 3. member management: inviting by username, changing roles, removing members and leaving.
 
 Accounts are managed with subcommands of the same binary, which run against the same database as the server (in Docker: `docker exec -it <container> cookbook user add <name>`):
 
@@ -128,7 +128,7 @@ Requirements: Go 1.26+ and Node.js 22+ (or the devcontainer, below).
    go run ./cmd/cookbook
    ```
 
-3. **Start the frontend** (terminal 2), then open <http://localhost:5173> and log in:
+3. **Start the frontend** (terminal 2), then open <http://localhost:5173>, log in and create a cookbook:
 
    ```sh
    cd frontend
@@ -143,16 +143,19 @@ API=http://localhost:8080/api
 curl -c session.txt -X POST $API/session -H 'Content-Type: application/json' \
   -d '{"username": "<your name>", "password": "<your password>"}'
 
-curl -b session.txt $API/recipes                 # list
-curl -b session.txt -X POST $API/recipes -H 'Content-Type: application/json' -d '{
+curl -b session.txt $API/cookbooks                          # your cookbooks
+curl -b session.txt -X POST $API/cookbooks -H 'Content-Type: application/json' \
+  -d '{"name": "Family"}'                                    # create one; note its "id"
+curl -b session.txt $API/cookbooks/<id>/recipes             # its recipes
+curl -b session.txt -X POST $API/cookbooks/<id>/recipes -H 'Content-Type: application/json' -d '{
   "name": "Pancakes", "ingredients": ["200 g flour"], "steps": ["Fry."], "tags": ["breakfast"]
-}'                                                # create; the Location header has its URL
-curl -b session.txt -X DELETE $API/session        # log out
+}'                                                           # add a recipe
+curl -b session.txt -X DELETE $API/session                   # log out
 ```
 
 To start over with an empty database, stop the backend and delete `backend/data/`.
 
-To work on the frontend without the backend, run `npm run dev:mock` instead of steps 1 and 2. The API is then mocked in the browser, with two sample recipes that reset on page reload; log in with any username and the password `cookbook password`.
+To work on the frontend without the backend, run `npm run dev:mock` instead of steps 1 and 2. The API is then mocked in the browser, with sample data that resets on page reload: you're admin of a "Family" cookbook and an editor of "Friends". Log in with any username and the password `cookbook password`.
 
 ### Development
 

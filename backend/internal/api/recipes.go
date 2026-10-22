@@ -9,8 +9,18 @@ import (
 	"family-cookbook/backend/internal/store"
 )
 
-func (s *server) ListRecipes(ctx context.Context, _ ListRecipesRequestObject) (ListRecipesResponseObject, error) {
-	summaries, err := s.store.ListRecipes(ctx)
+// Every recipe handler first checks that the current user is a member of
+// the cookbook in the URL; for anyone else, the cookbook doesn't exist.
+
+func (s *server) ListRecipes(ctx context.Context, req ListRecipesRequestObject) (ListRecipesResponseObject, error) {
+	c, err := s.memberCookbook(ctx, req.CookbookId)
+	if errors.Is(err, errNotMember) {
+		return ListRecipes404JSONResponse{cookbookNotFound}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	summaries, err := s.store.ListRecipes(ctx, c.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -22,6 +32,13 @@ func (s *server) ListRecipes(ctx context.Context, _ ListRecipesRequestObject) (L
 }
 
 func (s *server) CreateRecipe(ctx context.Context, req CreateRecipeRequestObject) (CreateRecipeResponseObject, error) {
+	c, err := s.memberCookbook(ctx, req.CookbookId)
+	if errors.Is(err, errNotMember) {
+		return CreateRecipe404JSONResponse{cookbookNotFound}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
 	content, msg := normalize(*req.Body)
 	if msg != "" {
 		return CreateRecipe400JSONResponse{BadRequestJSONResponse{Message: msg}}, nil
@@ -30,6 +47,7 @@ func (s *server) CreateRecipe(ctx context.Context, req CreateRecipeRequestObject
 	now, user := s.now().UTC(), currentUser(ctx)
 	r := store.Recipe{
 		ID:            s.newID(),
+		CookbookID:    c.ID,
 		RecipeContent: content,
 		CreatedAt:     now,
 		CreatedBy:     user,
@@ -40,7 +58,7 @@ func (s *server) CreateRecipe(ctx context.Context, req CreateRecipeRequestObject
 		return nil, err
 	}
 
-	location := basePath + "/recipes/" + r.ID
+	location := basePath + "/cookbooks/" + c.ID + "/recipes/" + r.ID
 	return CreateRecipe201JSONResponse{
 		Body:    toAPIRecipe(r),
 		Headers: CreateRecipe201ResponseHeaders{Location: &location},
@@ -48,7 +66,14 @@ func (s *server) CreateRecipe(ctx context.Context, req CreateRecipeRequestObject
 }
 
 func (s *server) GetRecipe(ctx context.Context, req GetRecipeRequestObject) (GetRecipeResponseObject, error) {
-	r, err := s.store.GetRecipe(ctx, req.RecipeId)
+	c, err := s.memberCookbook(ctx, req.CookbookId)
+	if errors.Is(err, errNotMember) {
+		return GetRecipe404JSONResponse{cookbookNotFound}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	r, err := s.store.GetRecipe(ctx, c.ID, req.RecipeId)
 	if errors.Is(err, store.ErrNotFound) {
 		return GetRecipe404JSONResponse{recipeNotFound}, nil
 	}
@@ -59,12 +84,19 @@ func (s *server) GetRecipe(ctx context.Context, req GetRecipeRequestObject) (Get
 }
 
 func (s *server) UpdateRecipe(ctx context.Context, req UpdateRecipeRequestObject) (UpdateRecipeResponseObject, error) {
+	c, err := s.memberCookbook(ctx, req.CookbookId)
+	if errors.Is(err, errNotMember) {
+		return UpdateRecipe404JSONResponse{cookbookNotFound}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
 	content, msg := normalize(*req.Body)
 	if msg != "" {
 		return UpdateRecipe400JSONResponse{BadRequestJSONResponse{Message: msg}}, nil
 	}
 
-	r, err := s.store.UpdateRecipe(ctx, req.RecipeId, content, currentUser(ctx), s.now().UTC())
+	r, err := s.store.UpdateRecipe(ctx, c.ID, req.RecipeId, content, currentUser(ctx), s.now().UTC())
 	if errors.Is(err, store.ErrNotFound) {
 		return UpdateRecipe404JSONResponse{recipeNotFound}, nil
 	}
@@ -75,7 +107,14 @@ func (s *server) UpdateRecipe(ctx context.Context, req UpdateRecipeRequestObject
 }
 
 func (s *server) DeleteRecipe(ctx context.Context, req DeleteRecipeRequestObject) (DeleteRecipeResponseObject, error) {
-	err := s.store.DeleteRecipe(ctx, req.RecipeId)
+	c, err := s.memberCookbook(ctx, req.CookbookId)
+	if errors.Is(err, errNotMember) {
+		return DeleteRecipe404JSONResponse{cookbookNotFound}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	err = s.store.DeleteRecipe(ctx, c.ID, req.RecipeId)
 	if errors.Is(err, store.ErrNotFound) {
 		return DeleteRecipe404JSONResponse{recipeNotFound}, nil
 	}

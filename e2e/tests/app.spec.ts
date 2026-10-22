@@ -17,9 +17,14 @@ test('an unknown address shows not found', async ({ page }) => {
 
 // Pages must fit the phone's width: sideways scrolling is the most common way
 // a mobile layout breaks.
-for (const path of ['/', '/new']) {
-  test(`${path} fits the screen width`, async ({ page }) => {
-    await page.goto(path)
+for (const [name, path] of [
+  ['home', () => '/'],
+  ['a cookbook', (c: { path: string }) => c.path],
+  ['the new recipe form', (c: { path: string }) => `${c.path}/new`],
+  ['cookbook settings', (c: { path: string }) => `${c.path}/settings`],
+] as const) {
+  test(`${name} fits the screen width`, async ({ page, cookbook }) => {
+    await page.goto(path(cookbook))
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 
     const overflow = await page.evaluate(
@@ -29,7 +34,7 @@ for (const path of ['/', '/new']) {
   })
 }
 
-test('a recipe page with long content fits the screen width', async ({ page, unique, createRecipe }) => {
+test('a recipe page with long content fits the screen width', async ({ page, unique, cookbook, createRecipe }) => {
   const recipe = await createRecipe({
     name: `A recipe with a rather long name that has to wrap nicely ${unique}`,
     ingredients: ['https://example.com/a/very/long/link/without/spaces/that/could/push/the/layout/sideways'],
@@ -38,7 +43,7 @@ test('a recipe page with long content fits the screen width', async ({ page, uni
     source: 'https://www.example.com/recipes/a-very-long-path/that-goes-on-and-on/',
   })
 
-  await page.goto(`/recipes/${recipe.id}`)
+  await page.goto(`${cookbook.path}/recipes/${recipe.id}`)
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 
   const overflow = await page.evaluate(

@@ -29,7 +29,10 @@ type Store struct {
 	db *sql.DB
 }
 
-var _ store.Store = (*Store)(nil)
+var (
+	_ store.Store     = (*Store)(nil)
+	_ store.Cookbooks = (*Store)(nil)
+)
 
 // Open opens (creating if needed) the database file at path and applies any
 // pending migrations.
@@ -129,13 +132,14 @@ func (s *Store) migrate(ctx context.Context) error {
 	return nil
 }
 
-func (s *Store) ListRecipes(ctx context.Context) ([]store.RecipeSummary, error) {
+func (s *Store) ListRecipes(ctx context.Context, cookbookID string) ([]store.RecipeSummary, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT r.id, r.name,
 		       (SELECT json_group_array(t.tag ORDER BY t.position)
 		        FROM recipe_tags t WHERE t.recipe_id = r.id)
 		FROM recipes r
-		ORDER BY r.name COLLATE NOCASE, r.id`)
+		WHERE r.cookbook_id = ?
+		ORDER BY r.name COLLATE NOCASE, r.id`, cookbookID)
 	if err != nil {
 		return nil, err
 	}
@@ -156,8 +160,8 @@ func (s *Store) ListRecipes(ctx context.Context) ([]store.RecipeSummary, error) 
 	return summaries, rows.Err()
 }
 
-func (s *Store) GetRecipe(ctx context.Context, id string) (store.Recipe, error) {
-	return getRecipe(ctx, s.db, id)
+func (s *Store) GetRecipe(ctx context.Context, cookbookID, id string) (store.Recipe, error) {
+	return getRecipe(ctx, s.db, cookbookID, id)
 }
 
 func (s *Store) CreateRecipe(ctx context.Context, r store.Recipe) error {
@@ -167,10 +171,10 @@ func (s *Store) CreateRecipe(ctx context.Context, r store.Recipe) error {
 	}
 	return s.withTx(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO recipes (id, name, source, ingredients, steps,
+			INSERT INTO recipes (id, cookbook_id, name, source, ingredients, steps,
 			                     created_at, created_by, updated_at, updated_by)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			r.ID, r.Name, r.Source, ingredients, steps,
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			r.ID, r.CookbookID, r.Name, r.Source, ingredients, steps,
 			formatTime(r.CreatedAt), r.CreatedBy, formatTime(r.UpdatedAt), r.UpdatedBy)
 		if err != nil {
 			return err
@@ -179,7 +183,7 @@ func (s *Store) CreateRecipe(ctx context.Context, r store.Recipe) error {
 	})
 }
 
-func (s *Store) UpdateRecipe(ctx context.Context, id string, c store.RecipeContent, by string, at time.Time) (store.Recipe, error) {
+func (s *Store) UpdateRecipe(ctx context.Context, cookbookID, id string, c store.RecipeContent, by string, at time.Time) (store.Recipe, error) {
 	ingredients, steps, err := marshalLists(c)
 	if err != nil {
 		return store.Recipe{}, err
@@ -189,8 +193,8 @@ func (s *Store) UpdateRecipe(ctx context.Context, id string, c store.RecipeConte
 		res, err := tx.ExecContext(ctx, `
 			UPDATE recipes
 			SET name = ?, source = ?, ingredients = ?, steps = ?, updated_at = ?, updated_by = ?
-			WHERE id = ?`,
-			c.Name, c.Source, ingredients, steps, formatTime(at), by, id)
+			WHERE id = ? AND cookbook_id = ?`,
+			c.Name, c.Source, ingredients, steps, formatTime(at), by, id, cookbookID)
 		if err != nil {
 			return err
 		}
@@ -202,14 +206,14 @@ func (s *Store) UpdateRecipe(ctx context.Context, id string, c store.RecipeConte
 		if err := replaceTags(ctx, tx, id, c.Tags); err != nil {
 			return err
 		}
-		updated, err = getRecipe(ctx, tx, id)
+		updated, err = getRecipe(ctx, tx, cookbookID, id)
 		return err
 	})
 	return updated, err
 }
 
-func (s *Store) DeleteRecipe(ctx context.Context, id string) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM recipes WHERE id = ?`, id)
+func (s *Store) DeleteRecipe(ctx context.Context, cookbookID, id string) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM recipes WHERE id = ? AND cookbook_id = ?`, id, cookbookID)
 	if err != nil {
 		return err
 	}
@@ -226,16 +230,16 @@ type querier interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
-func getRecipe(ctx context.Context, q querier, id string) (store.Recipe, error) {
+func getRecipe(ctx context.Context, q querier, cookbookID, id string) (store.Recipe, error) {
 	var r store.Recipe
 	var ingredients, steps, tags, createdAt, updatedAt string
 	err := q.QueryRowContext(ctx, `
-		SELECT id, name, source, ingredients, steps,
+		SELECT id, cookbook_id, name, source, ingredients, steps,
 		       created_at, created_by, updated_at, updated_by,
 		       (SELECT json_group_array(t.tag ORDER BY t.position)
 		        FROM recipe_tags t WHERE t.recipe_id = recipes.id)
-		FROM recipes WHERE id = ?`, id).
-		Scan(&r.ID, &r.Name, &r.Source, &ingredients, &steps,
+		FROM recipes WHERE id = ? AND cookbook_id = ?`, id, cookbookID).
+		Scan(&r.ID, &r.CookbookID, &r.Name, &r.Source, &ingredients, &steps,
 			&createdAt, &r.CreatedBy, &updatedAt, &r.UpdatedBy, &tags)
 	if errors.Is(err, sql.ErrNoRows) {
 		return store.Recipe{}, store.ErrNotFound
@@ -380,19 +384,6 @@ func (s *Store) SetPassword(ctx context.Context, username, passwordHash string) 
 		_, err = tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, id)
 		return err
 	})
-}
-
-func (s *Store) DeleteUser(ctx context.Context, username string) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE username = ?`, username)
-	if err != nil {
-		return err
-	}
-	if n, err := res.RowsAffected(); err != nil {
-		return err
-	} else if n == 0 {
-		return store.ErrNotFound
-	}
-	return nil
 }
 
 func (s *Store) CreateSession(ctx context.Context, sess store.Session) error {

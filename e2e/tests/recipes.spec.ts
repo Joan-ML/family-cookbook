@@ -2,11 +2,10 @@ import { expect, test } from './fixtures'
 
 // Core flows through the real UI, server and database, on phone-sized screens.
 
-test('create a recipe and find it again after a reload', async ({ page, unique, cleanUpByName }) => {
+test('create a recipe and find it again after a reload', async ({ page, unique, cookbook }) => {
   const name = `Gazpacho ${unique}`
-  cleanUpByName(name)
 
-  await page.goto('/')
+  await page.goto(cookbook.path)
   await page.getByRole('link', { name: 'New recipe' }).click()
   await page.getByLabel('Name', { exact: true }).fill(name)
   await page.getByLabel(/Ingredients/).fill('1 kg tomatoes\n1 cucumber\nOlive oil')
@@ -17,7 +16,7 @@ test('create a recipe and find it again after a reload', async ({ page, unique, 
   await page.getByRole('button', { name: 'Save' }).click()
 
   await expect(page.getByRole('heading', { level: 1, name })).toBeVisible()
-  await expect(page).toHaveURL(/\/recipes\/[^/]+$/)
+  await expect(page).toHaveURL(new RegExp(`^.*${cookbook.path}/recipes/[^/]+$`))
   await expect(page.getByRole('link', { name: 'vegan', exact: true })).toBeVisible()
 
   // A deep link survives a full reload: the server hands client routes to the app.
@@ -29,7 +28,7 @@ test('create a recipe and find it again after a reload', async ({ page, unique, 
   await expect(page.getByRole('list', { name: 'Recipes' }).getByRole('link', { name })).toBeVisible()
 })
 
-test('edit a recipe; the change is saved', async ({ page, unique, createRecipe }) => {
+test('edit a recipe; the change is saved', async ({ page, unique, cookbook, createRecipe }) => {
   const recipe = await createRecipe({
     name: `Pancakes ${unique}`,
     ingredients: ['200 g flour'],
@@ -37,7 +36,7 @@ test('edit a recipe; the change is saved', async ({ page, unique, createRecipe }
     tags: ['breakfast'],
   })
 
-  await page.goto(`/recipes/${recipe.id}`)
+  await page.goto(`${cookbook.path}/recipes/${recipe.id}`)
   await page.getByRole('link', { name: 'Edit' }).click()
   await page.getByLabel('Name', { exact: true }).fill(`Fluffy pancakes ${unique}`)
   await page.getByRole('button', { name: 'Remove step 2' }).click()
@@ -51,26 +50,26 @@ test('edit a recipe; the change is saved', async ({ page, unique, createRecipe }
   await expect(page.getByRole('heading', { name: 'Steps' }).locator('+ ol > li')).toHaveCount(1)
 })
 
-test('delete asks for confirmation', async ({ page, unique, createRecipe }) => {
+test('delete asks for confirmation', async ({ page, unique, cookbook, createRecipe }) => {
   const recipe = await createRecipe({ name: `Soup ${unique}` })
-  await page.goto(`/recipes/${recipe.id}`)
+  await page.goto(`${cookbook.path}/recipes/${recipe.id}`)
 
   // Cancelling keeps the recipe.
   page.once('dialog', (dialog) => dialog.dismiss())
   await page.getByRole('button', { name: 'Delete' }).click()
-  await expect(page).toHaveURL(`/recipes/${recipe.id}`)
+  await expect(page).toHaveURL(`${cookbook.path}/recipes/${recipe.id}`)
 
   // Confirming deletes it.
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'Delete' }).click()
-  await expect(page).toHaveURL('/')
+  await expect(page).toHaveURL(cookbook.path)
   await expect(page.getByRole('link', { name: `Soup ${unique}` })).toHaveCount(0)
 
-  await page.goto(`/recipes/${recipe.id}`)
+  await page.goto(`${cookbook.path}/recipes/${recipe.id}`)
   await expect(page.getByRole('heading', { name: 'Not found' })).toBeVisible()
 })
 
-test('search and tag filters survive navigating back', async ({ page, unique, createRecipe }) => {
+test('search and tag filters survive navigating back', async ({ page, unique, cookbook, createRecipe }) => {
   const tag = `tag-${unique}`.toLowerCase()
   await createRecipe({ name: `Escalivada ${unique}`, tags: [tag, 'vegan'] })
   await createRecipe({ name: `Pa amb tomàquet ${unique}`, tags: [tag] })
@@ -78,7 +77,7 @@ test('search and tag filters survive navigating back', async ({ page, unique, cr
   const list = page.getByRole('list', { name: 'Recipes' })
 
   // Search ignores accents and case.
-  await page.goto('/')
+  await page.goto(cookbook.path)
   await page.getByRole('searchbox').fill(`TOMAQUET ${unique}`)
   await expect(list.getByRole('link', { name: `Pa amb tomàquet ${unique}` })).toBeVisible()
   await expect(list.locator('.card')).toHaveCount(1)
@@ -87,18 +86,18 @@ test('search and tag filters survive navigating back', async ({ page, unique, cr
   await page.getByRole('searchbox').fill('')
   await list.getByRole('link', { name: `Escalivada ${unique}` }).click()
   await page.getByRole('link', { name: tag, exact: true }).click()
-  await expect(page).toHaveURL(`/?tag=${encodeURIComponent(tag)}`)
+  await expect(page).toHaveURL(`${cookbook.path}?tag=${encodeURIComponent(tag)}`)
   await expect(list.locator('.card')).toHaveCount(2)
   await list.getByRole('link', { name: `Pa amb tomàquet ${unique}` }).click()
   await page.goBack()
-  await expect(page).toHaveURL(`/?tag=${encodeURIComponent(tag)}`)
+  await expect(page).toHaveURL(`${cookbook.path}?tag=${encodeURIComponent(tag)}`)
   await expect(list.locator('.card')).toHaveCount(2)
   await expect(list.getByRole('link', { name: `Lentil soup ${unique}` })).toHaveCount(0)
 })
 
-test('reorder steps by dragging their handle', async ({ page, unique, createRecipe }) => {
+test('reorder steps by dragging their handle', async ({ page, unique, cookbook, createRecipe }) => {
   const recipe = await createRecipe({ name: `Bread ${unique}`, steps: ['Mix.', 'Knead.', 'Bake.'] })
-  await page.goto(`/recipes/${recipe.id}/edit`)
+  await page.goto(`${cookbook.path}/recipes/${recipe.id}/edit`)
   const step = (n: number) => page.getByRole('textbox', { name: `Step ${n}`, exact: true })
   await expect(step(3)).toHaveValue('Bake.')
 
@@ -124,9 +123,9 @@ test('reorder steps by dragging their handle', async ({ page, unique, createReci
   ])
 })
 
-test('reorder steps with the keyboard', async ({ page, unique, createRecipe }) => {
+test('reorder steps with the keyboard', async ({ page, unique, cookbook, createRecipe }) => {
   const recipe = await createRecipe({ name: `Bread ${unique}`, steps: ['Mix.', 'Knead.', 'Bake.'] })
-  await page.goto(`/recipes/${recipe.id}/edit`)
+  await page.goto(`${cookbook.path}/recipes/${recipe.id}/edit`)
   const step = (n: number) => page.getByRole('textbox', { name: `Step ${n}`, exact: true })
 
   // Pick up step 3, move it up one, drop it. Moves are announced to screen
@@ -144,10 +143,10 @@ test('reorder steps with the keyboard', async ({ page, unique, createRecipe }) =
   await expect(step(3)).toHaveValue('Knead.')
 })
 
-test('line breaks within a step are shown', async ({ page, unique, createRecipe }) => {
+test('line breaks within a step are shown', async ({ page, unique, cookbook, createRecipe }) => {
   const recipe = await createRecipe({ name: `Pasta ${unique}`, steps: ['Make the sauce:\nstir it well.'] })
 
-  await page.goto(`/recipes/${recipe.id}`)
+  await page.goto(`${cookbook.path}/recipes/${recipe.id}`)
 
   const firstStep = page.getByRole('heading', { name: 'Steps' }).locator('+ ol > li').first()
   // innerText reflects how text is rendered, so collapsed line breaks would show as a space.

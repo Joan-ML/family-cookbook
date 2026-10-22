@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Family Cookbook API
-  version: 0.3.0
+  version: 0.4.0
   description: |
     Contract between the Go backend and the React frontend.
     Backend tests validate real responses against this file, and both sides
@@ -11,6 +11,9 @@ info:
     - Every endpoint requires a session cookie unless it declares `security: []`.
       Log in with `POST /session`; without a valid session, endpoints answer 401.
     - Errors use the `Error` schema.
+    - Recipes belong to cookbooks. Cookbooks and their recipes only exist for
+      the cookbook's members: everyone else gets 404, never 403. Members whose
+      role doesn't allow an action get 403.
     - Collections are returned as `{ "items": [...] }`, leaving room for
       pagination fields later.
 servers:
@@ -114,22 +117,120 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /recipes:
+  /cookbooks:
     get:
-      operationId: listRecipes
-      summary: List all recipes
+      operationId: listCookbooks
+      summary: The cookbooks you're a member of
       responses:
         "200":
-          description: All recipes, sorted by name.
+          description: Your cookbooks, sorted by name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CookbookList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createCookbook
+      summary: Create a cookbook
+      description: You become its admin, and its only member until you invite others.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CookbookInput"
+      responses:
+        "201":
+          description: The created cookbook.
+          headers:
+            Location:
+              description: URL of the new cookbook.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cookbook"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /cookbooks/{cookbookId}:
+    parameters:
+      - $ref: "#/components/parameters/CookbookId"
+    get:
+      operationId: getCookbook
+      summary: Get a cookbook
+      responses:
+        "200":
+          description: The cookbook.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cookbook"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: renameCookbook
+      summary: Rename a cookbook (admins only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CookbookInput"
+      responses:
+        "200":
+          description: The renamed cookbook.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cookbook"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteCookbook
+      summary: Delete a cookbook and all its recipes (admins only)
+      responses:
+        "204":
+          description: The cookbook and its recipes were deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /cookbooks/{cookbookId}/recipes:
+    parameters:
+      - $ref: "#/components/parameters/CookbookId"
+    get:
+      operationId: listRecipes
+      summary: List a cookbook's recipes
+      responses:
+        "200":
+          description: The cookbook's recipes, sorted by name.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/RecipeList"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
     post:
       operationId: createRecipe
-      summary: Create a recipe
+      summary: Create a recipe in a cookbook
       requestBody:
         required: true
         content:
@@ -152,11 +253,14 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "413":
           $ref: "#/components/responses/PayloadTooLarge"
 
-  /recipes/{recipeId}:
+  /cookbooks/{cookbookId}/recipes/{recipeId}:
     parameters:
+      - $ref: "#/components/parameters/CookbookId"
       - $ref: "#/components/parameters/RecipeId"
     get:
       operationId: getRecipe
@@ -215,6 +319,12 @@ components:
       name: session
 
   parameters:
+    CookbookId:
+      name: cookbookId
+      in: path
+      required: true
+      schema:
+        type: string
     RecipeId:
       name: recipeId
       in: path
@@ -235,8 +345,16 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: You're a member, but your role doesn't allow this.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     NotFound:
-      description: The resource does not exist.
+      description: |
+        The resource does not exist, or belongs to a cookbook you're not a
+        member of: the two are indistinguishable, so cookbooks can't be discovered.
       content:
         application/json:
           schema:
@@ -299,6 +417,62 @@ components:
       properties:
         username:
           type: string
+
+    Role:
+      description: |
+        Your role in a cookbook. Admins also manage its members, rename it and
+        delete it; editors create, edit and delete its recipes.
+      type: string
+      enum: [admin, editor]
+
+    CookbookInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+
+    Cookbook:
+      type: object
+      required: [id, name, role, createdAt, createdBy]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          description: Username of the user who created the cookbook.
+          type: string
+
+    CookbookSummary:
+      type: object
+      required: [id, name, role, recipeCount]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+        recipeCount:
+          type: integer
+          minimum: 0
+
+    CookbookList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CookbookSummary"
 
     Error:
       type: object

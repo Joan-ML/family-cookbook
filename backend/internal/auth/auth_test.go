@@ -222,7 +222,7 @@ func TestPasswordResetAndRemovalEndSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.DeleteUser(ctx, "joan"); err != nil {
+	if _, err := st.DeleteUser(ctx, "joan"); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := s.Authenticate(ctx, token); !errors.Is(err, ErrNoSession) {

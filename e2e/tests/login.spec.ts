@@ -4,10 +4,10 @@ import { account } from './account'
 // These tests start logged out.
 test.use({ storageState: { cookies: [], origins: [] } })
 
-test('log in from a deep link, then log out', async ({ page, unique, createRecipe }) => {
+test('log in from a deep link, then log out', async ({ page, unique, cookbook, createRecipe }) => {
   const recipe = await createRecipe({ name: `Soup ${unique}` })
 
-  await page.goto(`/recipes/${recipe.id}`)
+  await page.goto(`${cookbook.path}/recipes/${recipe.id}`)
   await expect(page.getByRole('heading', { name: 'Log in' })).toBeVisible()
   await page.getByLabel('Username').fill(account.username.toUpperCase()) // usernames ignore case
   await page.getByLabel('Password').fill(account.password)

@@ -90,13 +90,16 @@ jobs:
           curl -sf http://localhost:8080/recipes/anything | grep -q '<title>Family Cookbook</title>'
           # Accounts are created with the admin command; without a session, the API refuses.
           docker exec -i cookbook cookbook user add "$E2E_USERNAME" <<< "$E2E_PASSWORD"
-          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/recipes)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/cookbooks)" = 401
           curl -sf -c session.txt -X POST http://localhost:8080/api/session -H 'Content-Type: application/json' \
             -d "{\"username\":\"$E2E_USERNAME\",\"password\":\"$E2E_PASSWORD\"}"
           # The unprivileged user can write to the data volume.
-          curl -sf -b session.txt -X POST http://localhost:8080/api/recipes -H 'Content-Type: application/json' \
-            -d '{"name":"Smoke test","ingredients":[],"steps":[],"tags":[]}'
-          curl -sf -b session.txt http://localhost:8080/api/recipes | grep -q 'Smoke test'
+          cookbook=$(curl -sf -b session.txt -X POST http://localhost:8080/api/cookbooks \
+            -H 'Content-Type: application/json' -d '{"name":"Smoke test"}' \
+            | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+          curl -sf -b session.txt -X POST "http://localhost:8080/api/cookbooks/$cookbook/recipes" \
+            -H 'Content-Type: application/json' -d '{"name":"Smoke soup","ingredients":[],"steps":[],"tags":[]}'
+          curl -sf -b session.txt "http://localhost:8080/api/cookbooks/$cookbook/recipes" | grep -q 'Smoke soup'
           # Backups work against the running container.
           docker exec cookbook cookbook backup - > backup.db
           head -c 15 backup.db | grep -q 'SQLite format 3'

@@ -22,9 +22,22 @@ func newDataDir(t *testing.T) string {
 		t.Fatal(err)
 	}
 	defer st.Close()
+	ctx := context.Background()
 	now := time.Now()
-	err = st.CreateRecipe(context.Background(), store.Recipe{
+	if err := st.CreateUser(ctx, "owner", "hash", now); err != nil {
+		t.Fatal(err)
+	}
+	owner, err := st.GetUser(ctx, "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = st.CreateCookbook(ctx, store.Cookbook{ID: "c1", Name: "Family", CreatedAt: now, CreatedBy: "owner"}, owner.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = st.CreateRecipe(ctx, store.Recipe{
 		ID:            "r1",
+		CookbookID:    "c1",
 		RecipeContent: store.RecipeContent{Name: "Soup"},
 		CreatedAt:     now, CreatedBy: "dev", UpdatedAt: now, UpdatedBy: "dev",
 	})
@@ -42,7 +55,7 @@ func assertHasSoup(t *testing.T, path string) {
 		t.Fatalf("opening backup: %v", err)
 	}
 	defer st.Close()
-	if r, err := st.GetRecipe(context.Background(), "r1"); err != nil || r.Name != "Soup" {
+	if r, err := st.GetRecipe(context.Background(), "c1", "r1"); err != nil || r.Name != "Soup" {
 		t.Fatalf("backup is missing the recipe: %v", err)
 	}
 }

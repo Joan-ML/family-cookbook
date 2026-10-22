@@ -37,6 +37,59 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
+// Defines values for Role.
+const (
+	Admin  Role = "admin"
+	Editor Role = "editor"
+)
+
+// Valid indicates whether the value is a known member of the Role enum.
+func (e Role) Valid() bool {
+	switch e {
+	case Admin:
+		return true
+	case Editor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Cookbook defines model for Cookbook.
+type Cookbook struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// CreatedBy Username of the user who created the cookbook.
+	CreatedBy string `json:"createdBy"`
+	Id        string `json:"id"`
+	Name      string `json:"name"`
+
+	// Role Your role in a cookbook. Admins also manage its members, rename it and
+	// delete it; editors create, edit and delete its recipes.
+	Role Role `json:"role"`
+}
+
+// CookbookInput defines model for CookbookInput.
+type CookbookInput struct {
+	Name string `json:"name"`
+}
+
+// CookbookList defines model for CookbookList.
+type CookbookList struct {
+	Items []CookbookSummary `json:"items"`
+}
+
+// CookbookSummary defines model for CookbookSummary.
+type CookbookSummary struct {
+	Id          string `json:"id"`
+	Name        string `json:"name"`
+	RecipeCount int    `json:"recipeCount"`
+
+	// Role Your role in a cookbook. Admins also manage its members, rename it and
+	// delete it; editors create, edit and delete its recipes.
+	Role Role `json:"role"`
+}
+
 // Credentials defines model for Credentials.
 type Credentials struct {
 	Password string `json:"password"`
@@ -122,16 +175,26 @@ type RecipeSummary struct {
 	Tags []string `json:"tags"`
 }
 
+// Role Your role in a cookbook. Admins also manage its members, rename it and
+// delete it; editors create, edit and delete its recipes.
+type Role string
+
 // User defines model for User.
 type User struct {
 	Username string `json:"username"`
 }
+
+// CookbookId defines model for CookbookId.
+type CookbookId = string
 
 // RecipeId defines model for RecipeId.
 type RecipeId = string
 
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
+
+// Forbidden defines model for Forbidden.
+type Forbidden = Error
 
 // NotFound defines model for NotFound.
 type NotFound = Error
@@ -145,6 +208,12 @@ type TooManyRequests = Error
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = Error
 
+// CreateCookbookJSONRequestBody defines body for CreateCookbook for application/json ContentType.
+type CreateCookbookJSONRequestBody = CookbookInput
+
+// RenameCookbookJSONRequestBody defines body for RenameCookbook for application/json ContentType.
+type RenameCookbookJSONRequestBody = CookbookInput
+
 // CreateRecipeJSONRequestBody defines body for CreateRecipe for application/json ContentType.
 type CreateRecipeJSONRequestBody = RecipeInput
 
@@ -156,6 +225,36 @@ type LogInJSONRequestBody = Credentials
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ListCookbooks The cookbooks you're a member of
+	// (GET /cookbooks)
+	ListCookbooks(w http.ResponseWriter, r *http.Request)
+	// CreateCookbook Create a cookbook
+	// (POST /cookbooks)
+	CreateCookbook(w http.ResponseWriter, r *http.Request)
+	// DeleteCookbook Delete a cookbook and all its recipes (admins only)
+	// (DELETE /cookbooks/{cookbookId})
+	DeleteCookbook(w http.ResponseWriter, r *http.Request, cookbookId CookbookId)
+	// GetCookbook Get a cookbook
+	// (GET /cookbooks/{cookbookId})
+	GetCookbook(w http.ResponseWriter, r *http.Request, cookbookId CookbookId)
+	// RenameCookbook Rename a cookbook (admins only)
+	// (PUT /cookbooks/{cookbookId})
+	RenameCookbook(w http.ResponseWriter, r *http.Request, cookbookId CookbookId)
+	// ListRecipes List a cookbook's recipes
+	// (GET /cookbooks/{cookbookId}/recipes)
+	ListRecipes(w http.ResponseWriter, r *http.Request, cookbookId CookbookId)
+	// CreateRecipe Create a recipe in a cookbook
+	// (POST /cookbooks/{cookbookId}/recipes)
+	CreateRecipe(w http.ResponseWriter, r *http.Request, cookbookId CookbookId)
+	// DeleteRecipe Delete a recipe
+	// (DELETE /cookbooks/{cookbookId}/recipes/{recipeId})
+	DeleteRecipe(w http.ResponseWriter, r *http.Request, cookbookId CookbookId, recipeId RecipeId)
+	// GetRecipe Get a recipe
+	// (GET /cookbooks/{cookbookId}/recipes/{recipeId})
+	GetRecipe(w http.ResponseWriter, r *http.Request, cookbookId CookbookId, recipeId RecipeId)
+	// UpdateRecipe Replace a recipe's content
+	// (PUT /cookbooks/{cookbookId}/recipes/{recipeId})
+	UpdateRecipe(w http.ResponseWriter, r *http.Request, cookbookId CookbookId, recipeId RecipeId)
 	// GetHealth Liveness check
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -165,21 +264,6 @@ type ServerInterface interface {
 	// GetMe The logged-in user
 	// (GET /me)
 	GetMe(w http.ResponseWriter, r *http.Request)
-	// ListRecipes List all recipes
-	// (GET /recipes)
-	ListRecipes(w http.ResponseWriter, r *http.Request)
-	// CreateRecipe Create a recipe
-	// (POST /recipes)
-	CreateRecipe(w http.ResponseWriter, r *http.Request)
-	// DeleteRecipe Delete a recipe
-	// (DELETE /recipes/{recipeId})
-	DeleteRecipe(w http.ResponseWriter, r *http.Request, recipeId RecipeId)
-	// GetRecipe Get a recipe
-	// (GET /recipes/{recipeId})
-	GetRecipe(w http.ResponseWriter, r *http.Request, recipeId RecipeId)
-	// UpdateRecipe Replace a recipe's content
-	// (PUT /recipes/{recipeId})
-	UpdateRecipe(w http.ResponseWriter, r *http.Request, recipeId RecipeId)
 	// LogOut Log out
 	// (DELETE /session)
 	LogOut(w http.ResponseWriter, r *http.Request)
@@ -196,6 +280,269 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListCookbooks operation middleware
+func (siw *ServerInterfaceWrapper) ListCookbooks(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCookbooks(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateCookbook operation middleware
+func (siw *ServerInterfaceWrapper) CreateCookbook(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateCookbook(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteCookbook operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCookbook(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cookbookId" -------------
+	var cookbookId CookbookId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cookbookId", r.PathValue("cookbookId"), &cookbookId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cookbookId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteCookbook(w, r, cookbookId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCookbook operation middleware
+func (siw *ServerInterfaceWrapper) GetCookbook(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cookbookId" -------------
+	var cookbookId CookbookId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cookbookId", r.PathValue("cookbookId"), &cookbookId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cookbookId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCookbook(w, r, cookbookId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenameCookbook operation middleware
+func (siw *ServerInterfaceWrapper) RenameCookbook(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cookbookId" -------------
+	var cookbookId CookbookId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cookbookId", r.PathValue("cookbookId"), &cookbookId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cookbookId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenameCookbook(w, r, cookbookId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListRecipes operation middleware
+func (siw *ServerInterfaceWrapper) ListRecipes(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cookbookId" -------------
+	var cookbookId CookbookId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cookbookId", r.PathValue("cookbookId"), &cookbookId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cookbookId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRecipes(w, r, cookbookId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateRecipe operation middleware
+func (siw *ServerInterfaceWrapper) CreateRecipe(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cookbookId" -------------
+	var cookbookId CookbookId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cookbookId", r.PathValue("cookbookId"), &cookbookId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cookbookId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateRecipe(w, r, cookbookId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteRecipe operation middleware
+func (siw *ServerInterfaceWrapper) DeleteRecipe(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cookbookId" -------------
+	var cookbookId CookbookId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cookbookId", r.PathValue("cookbookId"), &cookbookId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cookbookId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "recipeId" -------------
+	var recipeId RecipeId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "recipeId", r.PathValue("recipeId"), &recipeId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "recipeId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteRecipe(w, r, cookbookId, recipeId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRecipe operation middleware
+func (siw *ServerInterfaceWrapper) GetRecipe(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cookbookId" -------------
+	var cookbookId CookbookId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cookbookId", r.PathValue("cookbookId"), &cookbookId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cookbookId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "recipeId" -------------
+	var recipeId RecipeId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "recipeId", r.PathValue("recipeId"), &recipeId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "recipeId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRecipe(w, r, cookbookId, recipeId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateRecipe operation middleware
+func (siw *ServerInterfaceWrapper) UpdateRecipe(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cookbookId" -------------
+	var cookbookId CookbookId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cookbookId", r.PathValue("cookbookId"), &cookbookId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cookbookId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "recipeId" -------------
+	var recipeId RecipeId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "recipeId", r.PathValue("recipeId"), &recipeId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "recipeId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateRecipe(w, r, cookbookId, recipeId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
@@ -230,112 +577,6 @@ func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetMe(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListRecipes operation middleware
-func (siw *ServerInterfaceWrapper) ListRecipes(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListRecipes(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// CreateRecipe operation middleware
-func (siw *ServerInterfaceWrapper) CreateRecipe(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateRecipe(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// DeleteRecipe operation middleware
-func (siw *ServerInterfaceWrapper) DeleteRecipe(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "recipeId" -------------
-	var recipeId RecipeId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "recipeId", r.PathValue("recipeId"), &recipeId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "recipeId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DeleteRecipe(w, r, recipeId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetRecipe operation middleware
-func (siw *ServerInterfaceWrapper) GetRecipe(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "recipeId" -------------
-	var recipeId RecipeId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "recipeId", r.PathValue("recipeId"), &recipeId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "recipeId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetRecipe(w, r, recipeId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// UpdateRecipe operation middleware
-func (siw *ServerInterfaceWrapper) UpdateRecipe(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "recipeId" -------------
-	var recipeId RecipeId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "recipeId", r.PathValue("recipeId"), &recipeId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "recipeId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.UpdateRecipe(w, r, recipeId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -498,16 +739,23 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/session", wrapper.LogOut)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/session", wrapper.LogIn)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me", wrapper.GetMe)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/recipes", wrapper.ListRecipes)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/recipes", wrapper.CreateRecipe)
-	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/recipes/{recipeId}", wrapper.DeleteRecipe)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/recipes/{recipeId}", wrapper.GetRecipe)
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/recipes/{recipeId}", wrapper.UpdateRecipe)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cookbooks", wrapper.ListCookbooks)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cookbooks", wrapper.CreateCookbook)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/cookbooks/{cookbookId}", wrapper.DeleteCookbook)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cookbooks/{cookbookId}", wrapper.GetCookbook)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/cookbooks/{cookbookId}", wrapper.RenameCookbook)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cookbooks/{cookbookId}/recipes", wrapper.ListRecipes)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cookbooks/{cookbookId}/recipes", wrapper.CreateRecipe)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/cookbooks/{cookbookId}/recipes/{recipeId}", wrapper.DeleteRecipe)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cookbooks/{cookbookId}/recipes/{recipeId}", wrapper.GetRecipe)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/cookbooks/{cookbookId}/recipes/{recipeId}", wrapper.UpdateRecipe)
 
 	return m
 }
 
 type BadRequestJSONResponse Error
+
+type ForbiddenJSONResponse Error
 
 type NotFoundJSONResponse Error
 
@@ -523,6 +771,603 @@ type TooManyRequestsJSONResponse struct {
 }
 
 type UnauthorizedJSONResponse Error
+
+type ListCookbooksRequestObject struct {
+}
+
+type ListCookbooksResponseObject interface {
+	VisitListCookbooksResponse(w http.ResponseWriter) error
+}
+
+type ListCookbooks200JSONResponse CookbookList
+
+func (response ListCookbooks200JSONResponse) VisitListCookbooksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCookbooks401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListCookbooks401JSONResponse) VisitListCookbooksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCookbookRequestObject struct {
+	Body *CreateCookbookJSONRequestBody
+}
+
+type CreateCookbookResponseObject interface {
+	VisitCreateCookbookResponse(w http.ResponseWriter) error
+}
+
+type CreateCookbook201ResponseHeaders struct {
+	Location *string
+}
+
+type CreateCookbook201JSONResponse struct {
+	Body    Cookbook
+	Headers CreateCookbook201ResponseHeaders
+}
+
+func (response CreateCookbook201JSONResponse) VisitCreateCookbookResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.Location != nil {
+		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCookbook400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateCookbook400JSONResponse) VisitCreateCookbookResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCookbook401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateCookbook401JSONResponse) VisitCreateCookbookResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCookbookRequestObject struct {
+	CookbookId CookbookId `json:"cookbookId"`
+}
+
+type DeleteCookbookResponseObject interface {
+	VisitDeleteCookbookResponse(w http.ResponseWriter) error
+}
+
+type DeleteCookbook204Response struct {
+}
+
+func (response DeleteCookbook204Response) VisitDeleteCookbookResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteCookbook401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteCookbook401JSONResponse) VisitDeleteCookbookResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCookbook403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteCookbook403JSONResponse) VisitDeleteCookbookResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCookbook404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteCookbook404JSONResponse) VisitDeleteCookbookResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCookbookRequestObject struct {
+	CookbookId CookbookId `json:"cookbookId"`
+}
+
+type GetCookbookResponseObject interface {
+	VisitGetCookbookResponse(w http.ResponseWriter) error
+}
+
+type GetCookbook200JSONResponse Cookbook
+
+func (response GetCookbook200JSONResponse) VisitGetCookbookResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCookbook401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetCookbook401JSONResponse) VisitGetCookbookResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCookbook404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetCookbook404JSONResponse) VisitGetCookbookResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenameCookbookRequestObject struct {
+	CookbookId CookbookId `json:"cookbookId"`
+	Body       *RenameCookbookJSONRequestBody
+}
+
+type RenameCookbookResponseObject interface {
+	VisitRenameCookbookResponse(w http.ResponseWriter) error
+}
+
+type RenameCookbook200JSONResponse Cookbook
+
+func (response RenameCookbook200JSONResponse) VisitRenameCookbookResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenameCookbook400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RenameCookbook400JSONResponse) VisitRenameCookbookResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenameCookbook401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response RenameCookbook401JSONResponse) VisitRenameCookbookResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenameCookbook403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RenameCookbook403JSONResponse) VisitRenameCookbookResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenameCookbook404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RenameCookbook404JSONResponse) VisitRenameCookbookResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRecipesRequestObject struct {
+	CookbookId CookbookId `json:"cookbookId"`
+}
+
+type ListRecipesResponseObject interface {
+	VisitListRecipesResponse(w http.ResponseWriter) error
+}
+
+type ListRecipes200JSONResponse RecipeList
+
+func (response ListRecipes200JSONResponse) VisitListRecipesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRecipes401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListRecipes401JSONResponse) VisitListRecipesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRecipes404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListRecipes404JSONResponse) VisitListRecipesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRecipeRequestObject struct {
+	CookbookId CookbookId `json:"cookbookId"`
+	Body       *CreateRecipeJSONRequestBody
+}
+
+type CreateRecipeResponseObject interface {
+	VisitCreateRecipeResponse(w http.ResponseWriter) error
+}
+
+type CreateRecipe201ResponseHeaders struct {
+	Location *string
+}
+
+type CreateRecipe201JSONResponse struct {
+	Body    Recipe
+	Headers CreateRecipe201ResponseHeaders
+}
+
+func (response CreateRecipe201JSONResponse) VisitCreateRecipeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.Location != nil {
+		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRecipe400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateRecipe400JSONResponse) VisitCreateRecipeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRecipe401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateRecipe401JSONResponse) VisitCreateRecipeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRecipe404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateRecipe404JSONResponse) VisitCreateRecipeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRecipe413JSONResponse struct{ PayloadTooLargeJSONResponse }
+
+func (response CreateRecipe413JSONResponse) VisitCreateRecipeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRecipeRequestObject struct {
+	CookbookId CookbookId `json:"cookbookId"`
+	RecipeId   RecipeId   `json:"recipeId"`
+}
+
+type DeleteRecipeResponseObject interface {
+	VisitDeleteRecipeResponse(w http.ResponseWriter) error
+}
+
+type DeleteRecipe204Response struct {
+}
+
+func (response DeleteRecipe204Response) VisitDeleteRecipeResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteRecipe401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteRecipe401JSONResponse) VisitDeleteRecipeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRecipe404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteRecipe404JSONResponse) VisitDeleteRecipeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRecipeRequestObject struct {
+	CookbookId CookbookId `json:"cookbookId"`
+	RecipeId   RecipeId   `json:"recipeId"`
+}
+
+type GetRecipeResponseObject interface {
+	VisitGetRecipeResponse(w http.ResponseWriter) error
+}
+
+type GetRecipe200JSONResponse Recipe
+
+func (response GetRecipe200JSONResponse) VisitGetRecipeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRecipe401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetRecipe401JSONResponse) VisitGetRecipeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRecipe404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetRecipe404JSONResponse) VisitGetRecipeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateRecipeRequestObject struct {
+	CookbookId CookbookId `json:"cookbookId"`
+	RecipeId   RecipeId   `json:"recipeId"`
+	Body       *UpdateRecipeJSONRequestBody
+}
+
+type UpdateRecipeResponseObject interface {
+	VisitUpdateRecipeResponse(w http.ResponseWriter) error
+}
+
+type UpdateRecipe200JSONResponse Recipe
+
+func (response UpdateRecipe200JSONResponse) VisitUpdateRecipeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateRecipe400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateRecipe400JSONResponse) VisitUpdateRecipeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateRecipe401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateRecipe401JSONResponse) VisitUpdateRecipeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateRecipe404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateRecipe404JSONResponse) VisitUpdateRecipeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateRecipe413JSONResponse struct{ PayloadTooLargeJSONResponse }
+
+func (response UpdateRecipe413JSONResponse) VisitUpdateRecipeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
 
 type GetHealthRequestObject struct {
 }
@@ -597,288 +1442,6 @@ func (response GetMe401JSONResponse) VisitGetMeResponse(w http.ResponseWriter) e
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListRecipesRequestObject struct {
-}
-
-type ListRecipesResponseObject interface {
-	VisitListRecipesResponse(w http.ResponseWriter) error
-}
-
-type ListRecipes200JSONResponse RecipeList
-
-func (response ListRecipes200JSONResponse) VisitListRecipesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListRecipes401JSONResponse struct{ UnauthorizedJSONResponse }
-
-func (response ListRecipes401JSONResponse) VisitListRecipesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateRecipeRequestObject struct {
-	Body *CreateRecipeJSONRequestBody
-}
-
-type CreateRecipeResponseObject interface {
-	VisitCreateRecipeResponse(w http.ResponseWriter) error
-}
-
-type CreateRecipe201ResponseHeaders struct {
-	Location *string
-}
-
-type CreateRecipe201JSONResponse struct {
-	Body    Recipe
-	Headers CreateRecipe201ResponseHeaders
-}
-
-func (response CreateRecipe201JSONResponse) VisitCreateRecipeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	if response.Headers.Location != nil {
-		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
-	}
-	w.WriteHeader(201)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateRecipe400JSONResponse struct{ BadRequestJSONResponse }
-
-func (response CreateRecipe400JSONResponse) VisitCreateRecipeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateRecipe401JSONResponse struct{ UnauthorizedJSONResponse }
-
-func (response CreateRecipe401JSONResponse) VisitCreateRecipeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateRecipe413JSONResponse struct{ PayloadTooLargeJSONResponse }
-
-func (response CreateRecipe413JSONResponse) VisitCreateRecipeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(413)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteRecipeRequestObject struct {
-	RecipeId RecipeId `json:"recipeId"`
-}
-
-type DeleteRecipeResponseObject interface {
-	VisitDeleteRecipeResponse(w http.ResponseWriter) error
-}
-
-type DeleteRecipe204Response struct {
-}
-
-func (response DeleteRecipe204Response) VisitDeleteRecipeResponse(w http.ResponseWriter) error {
-	w.WriteHeader(204)
-	return nil
-}
-
-type DeleteRecipe401JSONResponse struct{ UnauthorizedJSONResponse }
-
-func (response DeleteRecipe401JSONResponse) VisitDeleteRecipeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteRecipe404JSONResponse struct{ NotFoundJSONResponse }
-
-func (response DeleteRecipe404JSONResponse) VisitDeleteRecipeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetRecipeRequestObject struct {
-	RecipeId RecipeId `json:"recipeId"`
-}
-
-type GetRecipeResponseObject interface {
-	VisitGetRecipeResponse(w http.ResponseWriter) error
-}
-
-type GetRecipe200JSONResponse Recipe
-
-func (response GetRecipe200JSONResponse) VisitGetRecipeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetRecipe401JSONResponse struct{ UnauthorizedJSONResponse }
-
-func (response GetRecipe401JSONResponse) VisitGetRecipeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetRecipe404JSONResponse struct{ NotFoundJSONResponse }
-
-func (response GetRecipe404JSONResponse) VisitGetRecipeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateRecipeRequestObject struct {
-	RecipeId RecipeId `json:"recipeId"`
-	Body     *UpdateRecipeJSONRequestBody
-}
-
-type UpdateRecipeResponseObject interface {
-	VisitUpdateRecipeResponse(w http.ResponseWriter) error
-}
-
-type UpdateRecipe200JSONResponse Recipe
-
-func (response UpdateRecipe200JSONResponse) VisitUpdateRecipeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateRecipe400JSONResponse struct{ BadRequestJSONResponse }
-
-func (response UpdateRecipe400JSONResponse) VisitUpdateRecipeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateRecipe401JSONResponse struct{ UnauthorizedJSONResponse }
-
-func (response UpdateRecipe401JSONResponse) VisitUpdateRecipeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateRecipe404JSONResponse struct{ NotFoundJSONResponse }
-
-func (response UpdateRecipe404JSONResponse) VisitUpdateRecipeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateRecipe413JSONResponse struct{ PayloadTooLargeJSONResponse }
-
-func (response UpdateRecipe413JSONResponse) VisitUpdateRecipeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(413)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -985,6 +1548,36 @@ func (response LogIn429JSONResponse) VisitLogInResponse(w http.ResponseWriter) e
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// ListCookbooks The cookbooks you're a member of
+	// (GET /cookbooks)
+	ListCookbooks(ctx context.Context, request ListCookbooksRequestObject) (ListCookbooksResponseObject, error)
+	// CreateCookbook Create a cookbook
+	// (POST /cookbooks)
+	CreateCookbook(ctx context.Context, request CreateCookbookRequestObject) (CreateCookbookResponseObject, error)
+	// DeleteCookbook Delete a cookbook and all its recipes (admins only)
+	// (DELETE /cookbooks/{cookbookId})
+	DeleteCookbook(ctx context.Context, request DeleteCookbookRequestObject) (DeleteCookbookResponseObject, error)
+	// GetCookbook Get a cookbook
+	// (GET /cookbooks/{cookbookId})
+	GetCookbook(ctx context.Context, request GetCookbookRequestObject) (GetCookbookResponseObject, error)
+	// RenameCookbook Rename a cookbook (admins only)
+	// (PUT /cookbooks/{cookbookId})
+	RenameCookbook(ctx context.Context, request RenameCookbookRequestObject) (RenameCookbookResponseObject, error)
+	// ListRecipes List a cookbook's recipes
+	// (GET /cookbooks/{cookbookId}/recipes)
+	ListRecipes(ctx context.Context, request ListRecipesRequestObject) (ListRecipesResponseObject, error)
+	// CreateRecipe Create a recipe in a cookbook
+	// (POST /cookbooks/{cookbookId}/recipes)
+	CreateRecipe(ctx context.Context, request CreateRecipeRequestObject) (CreateRecipeResponseObject, error)
+	// DeleteRecipe Delete a recipe
+	// (DELETE /cookbooks/{cookbookId}/recipes/{recipeId})
+	DeleteRecipe(ctx context.Context, request DeleteRecipeRequestObject) (DeleteRecipeResponseObject, error)
+	// GetRecipe Get a recipe
+	// (GET /cookbooks/{cookbookId}/recipes/{recipeId})
+	GetRecipe(ctx context.Context, request GetRecipeRequestObject) (GetRecipeResponseObject, error)
+	// UpdateRecipe Replace a recipe's content
+	// (PUT /cookbooks/{cookbookId}/recipes/{recipeId})
+	UpdateRecipe(ctx context.Context, request UpdateRecipeRequestObject) (UpdateRecipeResponseObject, error)
 	// GetHealth Liveness check
 	// (GET /health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
@@ -994,21 +1587,6 @@ type StrictServerInterface interface {
 	// GetMe The logged-in user
 	// (GET /me)
 	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
-	// ListRecipes List all recipes
-	// (GET /recipes)
-	ListRecipes(ctx context.Context, request ListRecipesRequestObject) (ListRecipesResponseObject, error)
-	// CreateRecipe Create a recipe
-	// (POST /recipes)
-	CreateRecipe(ctx context.Context, request CreateRecipeRequestObject) (CreateRecipeResponseObject, error)
-	// DeleteRecipe Delete a recipe
-	// (DELETE /recipes/{recipeId})
-	DeleteRecipe(ctx context.Context, request DeleteRecipeRequestObject) (DeleteRecipeResponseObject, error)
-	// GetRecipe Get a recipe
-	// (GET /recipes/{recipeId})
-	GetRecipe(ctx context.Context, request GetRecipeRequestObject) (GetRecipeResponseObject, error)
-	// UpdateRecipe Replace a recipe's content
-	// (PUT /recipes/{recipeId})
-	UpdateRecipe(ctx context.Context, request UpdateRecipeRequestObject) (UpdateRecipeResponseObject, error)
 	// LogOut Log out
 	// (DELETE /session)
 	LogOut(ctx context.Context, request LogOutRequestObject) (LogOutResponseObject, error)
@@ -1054,6 +1632,293 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// ListCookbooks operation middleware
+func (sh *strictHandler) ListCookbooks(w http.ResponseWriter, r *http.Request) {
+	var request ListCookbooksRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCookbooks(ctx, request.(ListCookbooksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCookbooks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListCookbooksResponseObject); ok {
+		if err := validResponse.VisitListCookbooksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateCookbook operation middleware
+func (sh *strictHandler) CreateCookbook(w http.ResponseWriter, r *http.Request) {
+	var request CreateCookbookRequestObject
+
+	var body CreateCookbookJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateCookbook(ctx, request.(CreateCookbookRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateCookbook")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateCookbookResponseObject); ok {
+		if err := validResponse.VisitCreateCookbookResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteCookbook operation middleware
+func (sh *strictHandler) DeleteCookbook(w http.ResponseWriter, r *http.Request, cookbookId CookbookId) {
+	var request DeleteCookbookRequestObject
+
+	request.CookbookId = cookbookId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteCookbook(ctx, request.(DeleteCookbookRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteCookbook")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteCookbookResponseObject); ok {
+		if err := validResponse.VisitDeleteCookbookResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCookbook operation middleware
+func (sh *strictHandler) GetCookbook(w http.ResponseWriter, r *http.Request, cookbookId CookbookId) {
+	var request GetCookbookRequestObject
+
+	request.CookbookId = cookbookId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCookbook(ctx, request.(GetCookbookRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCookbook")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCookbookResponseObject); ok {
+		if err := validResponse.VisitGetCookbookResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RenameCookbook operation middleware
+func (sh *strictHandler) RenameCookbook(w http.ResponseWriter, r *http.Request, cookbookId CookbookId) {
+	var request RenameCookbookRequestObject
+
+	request.CookbookId = cookbookId
+
+	var body RenameCookbookJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RenameCookbook(ctx, request.(RenameCookbookRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RenameCookbook")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RenameCookbookResponseObject); ok {
+		if err := validResponse.VisitRenameCookbookResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListRecipes operation middleware
+func (sh *strictHandler) ListRecipes(w http.ResponseWriter, r *http.Request, cookbookId CookbookId) {
+	var request ListRecipesRequestObject
+
+	request.CookbookId = cookbookId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRecipes(ctx, request.(ListRecipesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRecipes")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRecipesResponseObject); ok {
+		if err := validResponse.VisitListRecipesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateRecipe operation middleware
+func (sh *strictHandler) CreateRecipe(w http.ResponseWriter, r *http.Request, cookbookId CookbookId) {
+	var request CreateRecipeRequestObject
+
+	request.CookbookId = cookbookId
+
+	var body CreateRecipeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateRecipe(ctx, request.(CreateRecipeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateRecipe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateRecipeResponseObject); ok {
+		if err := validResponse.VisitCreateRecipeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteRecipe operation middleware
+func (sh *strictHandler) DeleteRecipe(w http.ResponseWriter, r *http.Request, cookbookId CookbookId, recipeId RecipeId) {
+	var request DeleteRecipeRequestObject
+
+	request.CookbookId = cookbookId
+	request.RecipeId = recipeId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteRecipe(ctx, request.(DeleteRecipeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteRecipe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteRecipeResponseObject); ok {
+		if err := validResponse.VisitDeleteRecipeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetRecipe operation middleware
+func (sh *strictHandler) GetRecipe(w http.ResponseWriter, r *http.Request, cookbookId CookbookId, recipeId RecipeId) {
+	var request GetRecipeRequestObject
+
+	request.CookbookId = cookbookId
+	request.RecipeId = recipeId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRecipe(ctx, request.(GetRecipeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRecipe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRecipeResponseObject); ok {
+		if err := validResponse.VisitGetRecipeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateRecipe operation middleware
+func (sh *strictHandler) UpdateRecipe(w http.ResponseWriter, r *http.Request, cookbookId CookbookId, recipeId RecipeId) {
+	var request UpdateRecipeRequestObject
+
+	request.CookbookId = cookbookId
+	request.RecipeId = recipeId
+
+	var body UpdateRecipeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateRecipe(ctx, request.(UpdateRecipeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateRecipe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateRecipeResponseObject); ok {
+		if err := validResponse.VisitUpdateRecipeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetHealth operation middleware
@@ -1128,146 +1993,6 @@ func (sh *strictHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ListRecipes operation middleware
-func (sh *strictHandler) ListRecipes(w http.ResponseWriter, r *http.Request) {
-	var request ListRecipesRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ListRecipes(ctx, request.(ListRecipesRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListRecipes")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ListRecipesResponseObject); ok {
-		if err := validResponse.VisitListRecipesResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// CreateRecipe operation middleware
-func (sh *strictHandler) CreateRecipe(w http.ResponseWriter, r *http.Request) {
-	var request CreateRecipeRequestObject
-
-	var body CreateRecipeJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.CreateRecipe(ctx, request.(CreateRecipeRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CreateRecipe")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(CreateRecipeResponseObject); ok {
-		if err := validResponse.VisitCreateRecipeResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// DeleteRecipe operation middleware
-func (sh *strictHandler) DeleteRecipe(w http.ResponseWriter, r *http.Request, recipeId RecipeId) {
-	var request DeleteRecipeRequestObject
-
-	request.RecipeId = recipeId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.DeleteRecipe(ctx, request.(DeleteRecipeRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DeleteRecipe")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(DeleteRecipeResponseObject); ok {
-		if err := validResponse.VisitDeleteRecipeResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetRecipe operation middleware
-func (sh *strictHandler) GetRecipe(w http.ResponseWriter, r *http.Request, recipeId RecipeId) {
-	var request GetRecipeRequestObject
-
-	request.RecipeId = recipeId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetRecipe(ctx, request.(GetRecipeRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetRecipe")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetRecipeResponseObject); ok {
-		if err := validResponse.VisitGetRecipeResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// UpdateRecipe operation middleware
-func (sh *strictHandler) UpdateRecipe(w http.ResponseWriter, r *http.Request, recipeId RecipeId) {
-	var request UpdateRecipeRequestObject
-
-	request.RecipeId = recipeId
-
-	var body UpdateRecipeJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.UpdateRecipe(ctx, request.(UpdateRecipeRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "UpdateRecipe")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(UpdateRecipeResponseObject); ok {
-		if err := validResponse.VisitUpdateRecipeResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
 // LogOut operation middleware
 func (sh *strictHandler) LogOut(w http.ResponseWriter, r *http.Request) {
 	var request LogOutRequestObject
@@ -1328,45 +2053,55 @@ func (sh *strictHandler) LogIn(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"xpyKpbmxSgzFPtZSzG/m/w0AAP//",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

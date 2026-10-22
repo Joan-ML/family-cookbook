@@ -59,7 +59,9 @@ func newTestServer(t *testing.T) (*contractServer, *server) {
 	s.auth = auth.NewService(st, st, func() time.Time { return s.now() })
 
 	srv := newContractServer(t, newHandler(s))
+	srv.db = st
 	srv.logIn(t, testUser, testPassword)
+	srv.book = srv.newCookbook(t, "Test kitchen")
 	return srv, s
 }
 
@@ -133,7 +135,7 @@ func TestOversizedBodyReturns413(t *testing.T) {
 	in := pancakes()
 	in.Steps = []string{strings.Repeat("a", maxBodyBytes)}
 
-	res := srv.doInvalid(t, http.MethodPost, "/api/recipes", mustJSON(t, in))
+	res := srv.doInvalid(t, http.MethodPost, srv.book+"/recipes", mustJSON(t, in))
 
 	wantStatus(t, res, http.StatusRequestEntityTooLarge)
 }

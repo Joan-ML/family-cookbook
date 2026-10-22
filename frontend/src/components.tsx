@@ -1,16 +1,17 @@
 import { Link } from 'wouter'
 import type { Info } from './api/client'
 import { getInfo } from './api/recipes'
+import { paths } from './paths'
 import { useLoad } from './useLoad'
 
-/** Tags as small chips; each links to the list filtered by that tag. */
-export function TagList({ tags }: { tags: string[] }) {
+/** Tags as small chips; each links to the cookbook filtered by that tag. */
+export function TagList({ tags, cookbookId }: { tags: string[]; cookbookId: string }) {
   if (tags.length === 0) return null
   return (
     <ul className="tags" aria-label="Tags">
       {tags.map((tag) => (
         <li key={tag}>
-          <Link className="tag" href={`/?tag=${encodeURIComponent(tag)}`}>
+          <Link className="tag" href={paths.cookbookTag(cookbookId, tag)}>
             {tag}
           </Link>
         </li>

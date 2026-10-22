@@ -18,9 +18,11 @@ func TestReopenKeepsDataAndSkipsAppliedMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	seedCookbook(t, s)
 	now := time.Now()
 	r := store.Recipe{
 		ID:            "r1",
+		CookbookID:    "c1",
 		RecipeContent: store.RecipeContent{Name: "Soup", Tags: []string{"vegan"}},
 		CreatedAt:     now, CreatedBy: "dev", UpdatedAt: now, UpdatedBy: "dev",
 	}
@@ -34,7 +36,7 @@ func TestReopenKeepsDataAndSkipsAppliedMigrations(t *testing.T) {
 		t.Fatalf("reopening: %v", err)
 	}
 	defer s.Close()
-	if _, err := s.GetRecipe(ctx, "r1"); err != nil {
+	if _, err := s.GetRecipe(ctx, "c1", "r1"); err != nil {
 		t.Fatalf("recipe lost after reopening: %v", err)
 	}
 }
@@ -46,9 +48,11 @@ func TestDeleteRecipeRemovesItsTags(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	seedCookbook(t, s)
 	now := time.Now()
 	r := store.Recipe{
 		ID:            "r1",
+		CookbookID:    "c1",
 		RecipeContent: store.RecipeContent{Name: "Soup", Tags: []string{"vegan", "quick"}},
 		CreatedAt:     now, CreatedBy: "dev", UpdatedAt: now, UpdatedBy: "dev",
 	}
@@ -56,7 +60,7 @@ func TestDeleteRecipeRemovesItsTags(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := s.DeleteRecipe(ctx, "r1"); err != nil {
+	if err := s.DeleteRecipe(ctx, "c1", "r1"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -77,9 +81,11 @@ func TestBackupIsConsistentWhileTheDatabaseIsInUse(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	seedCookbook(t, s)
 	now := time.Now()
 	r := store.Recipe{
 		ID:            "r1",
+		CookbookID:    "c1",
 		RecipeContent: store.RecipeContent{Name: "Soup", Tags: []string{"vegan"}, Steps: []string{"Boil."}},
 		CreatedAt:     now, CreatedBy: "dev", UpdatedAt: now, UpdatedBy: "dev",
 	}
@@ -112,7 +118,7 @@ func TestBackupIsConsistentWhileTheDatabaseIsInUse(t *testing.T) {
 		t.Fatalf("opening backup: %v", err)
 	}
 	defer restored.Close()
-	got, err := restored.GetRecipe(ctx, "r1")
+	got, err := restored.GetRecipe(ctx, "c1", "r1")
 	if err != nil {
 		t.Fatalf("recipe missing from backup: %v", err)
 	}
@@ -140,4 +146,33 @@ func TestBackupRefusesToOverwrite(t *testing.T) {
 	if b, _ := os.ReadFile(existing); string(b) != "keep me" {
 		t.Errorf("existing file changed to %q", b)
 	}
+}
+
+// seedCookbook creates user "owner" and cookbook "c1" with owner as admin,
+// returning owner's user ID.
+func seedCookbook(t *testing.T, s *Store) int64 {
+	t.Helper()
+	return addCookbook(t, s, "c1", "Family", addUser(t, s, "owner"))
+}
+
+func addUser(t *testing.T, s *Store, name string) int64 {
+	t.Helper()
+	ctx := context.Background()
+	if err := s.CreateUser(ctx, name, "hash", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	u, err := s.GetUser(ctx, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u.ID
+}
+
+func addCookbook(t *testing.T, s *Store, id, name string, adminID int64) int64 {
+	t.Helper()
+	c := store.Cookbook{ID: id, Name: name, CreatedAt: time.Now(), CreatedBy: "owner"}
+	if err := s.CreateCookbook(context.Background(), c, adminID); err != nil {
+		t.Fatal(err)
+	}
+	return adminID
 }

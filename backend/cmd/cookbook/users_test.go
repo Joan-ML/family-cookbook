@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"family-cookbook/backend/internal/auth"
+	"family-cookbook/backend/internal/store"
 	"family-cookbook/backend/internal/store/sqlite"
 )
 
@@ -94,5 +95,41 @@ func TestUserCommandErrors(t *testing.T) {
 	}
 	if stdout, _ := cli(t, 0, "", "user", "list"); strings.Contains(stdout, "anna") {
 		t.Errorf("a failed add created a user: %q", stdout)
+	}
+}
+
+func TestUserRemoveReportsCookbookChanges(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("DATA_DIR", dataDir)
+	cli(t, 0, "first password\n", "user", "add", "joan")
+	cli(t, 0, "second password\n", "user", "add", "anna")
+	st, err := sqlite.Open(dbPath(dataDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	joan, _ := st.GetUser(ctx, "joan")
+	anna, _ := st.GetUser(ctx, "anna")
+	now := time.Now()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(st.CreateCookbook(ctx, store.Cookbook{ID: "c1", Name: "Just mine", CreatedAt: now, CreatedBy: "joan"}, joan.ID))
+	must(st.CreateCookbook(ctx, store.Cookbook{ID: "c2", Name: "Family", CreatedAt: now, CreatedBy: "joan"}, joan.ID))
+	must(st.AddMember(ctx, "c2", anna.ID, store.RoleEditor, now))
+	st.Close()
+
+	_, stderr := cli(t, 0, "", "user", "remove", "joan")
+
+	for _, want := range []string{
+		`deleted cookbook "Just mine", which had no other members`,
+		`made anna an admin of "Family", which had no other admin`,
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr %q lacks %q", stderr, want)
+		}
 	}
 }

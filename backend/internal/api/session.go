@@ -18,6 +18,7 @@ const sessionCookie = "session"
 // request holds what authenticate learned about a request, for the handlers.
 type request struct {
 	user   string // empty when not logged in
+	userID int64
 	token  string // the session cookie as sent, even if no longer valid
 	secure bool   // whether cookies set in reply get the Secure flag
 }
@@ -34,6 +35,11 @@ func currentUser(ctx context.Context) string {
 	return requestInfo(ctx).user
 }
 
+// currentUserID returns the logged-in user's ID, or 0 for anonymous requests.
+func currentUserID(ctx context.Context) int64 {
+	return requestInfo(ctx).userID
+}
+
 // authenticate attaches the session's user to the request, if the session
 // cookie is valid. It never rejects requests: the validator does that for
 // endpoints the spec says need a session.
@@ -45,7 +51,7 @@ func (s *server) authenticate(next http.Handler) http.Handler {
 			sess, renewed, err := s.auth.Authenticate(r.Context(), c.Value)
 			switch {
 			case err == nil:
-				info.user = sess.Username
+				info.user, info.userID = sess.Username, sess.UserID
 				if renewed {
 					http.SetCookie(w, s.sessionCookie(c.Value, info.secure))
 				}

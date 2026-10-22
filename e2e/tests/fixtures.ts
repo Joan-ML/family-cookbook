@@ -12,6 +12,13 @@ type RecipeInput = {
 
 type Recipe = RecipeInput & { id: string }
 
+type Cookbook = {
+  id: string
+  name: string
+  /** The cookbook's page in the app, e.g. "/cookbooks/abc". */
+  path: string
+}
+
 type Fixtures = {
   /**
    * API client logged in as the test account, for setting up and cleaning up
@@ -20,18 +27,15 @@ type Fixtures = {
   api: APIRequestContext
   /** A suffix unique to this test, to keep its data apart from other tests'. */
   unique: string
-  /** Creates a recipe through the API; it's deleted when the test ends. */
+  /**
+   * A fresh cookbook for this test, which the test account is admin of. It's
+   * deleted, with its recipes, when the test ends.
+   */
+  cookbook: Cookbook
+  /** Creates a recipe in the test's cookbook through the API. */
   createRecipe: (input: Partial<RecipeInput> & { name: string }) => Promise<Recipe>
-  /** Deletes, at the end of the test, recipes the test created through the UI. */
-  cleanUpByName: (name: string) => void
-}
-
-async function deleteByName(request: APIRequestContext, name: string) {
-  const res = await request.get('/api/recipes')
-  const { items } = (await res.json()) as { items: { id: string; name: string }[] }
-  for (const r of items.filter((r) => r.name === name)) {
-    await request.delete(`/api/recipes/${r.id}`)
-  }
+  /** Deletes, at the end of the test, cookbooks the test created through the UI. */
+  cleanUpCookbook: (name: string) => void
 }
 
 export const test = base.extend<Fixtures>({
@@ -45,23 +49,31 @@ export const test = base.extend<Fixtures>({
     await use(`${testInfo.project.name}-${testInfo.testId.slice(0, 6)}-${Date.now().toString(36)}`)
   },
 
-  createRecipe: async ({ api: request }, use) => {
-    const created: string[] = []
+  cookbook: async ({ api, unique }, use) => {
+    const res = await api.post('/api/cookbooks', { data: { name: `Test kitchen ${unique}` } })
+    expect(res.status()).toBe(201)
+    const { id, name } = (await res.json()) as { id: string; name: string }
+    await use({ id, name, path: `/cookbooks/${id}` })
+    await api.delete(`/api/cookbooks/${id}`)
+  },
+
+  createRecipe: async ({ api, cookbook }, use) => {
     await use(async (input) => {
-      const res = await request.post('/api/recipes', {
+      const res = await api.post(`/api${cookbook.path}/recipes`, {
         data: { ingredients: [], steps: [], tags: [], ...input },
       })
       expect(res.status()).toBe(201)
-      const recipe = (await res.json()) as Recipe
-      created.push(recipe.id)
-      return recipe
+      return (await res.json()) as Recipe
     })
-    for (const id of created) await request.delete(`/api/recipes/${id}`)
   },
 
-  cleanUpByName: async ({ api: request }, use) => {
+  cleanUpCookbook: async ({ api }, use) => {
     const names: string[] = []
     await use((name) => names.push(name))
-    for (const name of names) await deleteByName(request, name)
+    const res = await api.get('/api/cookbooks')
+    const { items } = (await res.json()) as { items: { id: string; name: string }[] }
+    for (const c of items.filter((c) => names.includes(c.name))) {
+      await api.delete(`/api/cookbooks/${c.id}`)
+    }
   },
 })

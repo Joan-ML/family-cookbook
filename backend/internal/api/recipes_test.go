@@ -22,7 +22,7 @@ func pancakes() RecipeInput {
 
 func createRecipe(t *testing.T, srv *contractServer, in RecipeInput) Recipe {
 	t.Helper()
-	res := srv.do(t, http.MethodPost, "/api/recipes", mustJSON(t, in))
+	res := srv.do(t, http.MethodPost, srv.book+"/recipes", mustJSON(t, in))
 	wantStatus(t, res, http.StatusCreated)
 	return decode[Recipe](t, res)
 }
@@ -30,11 +30,11 @@ func createRecipe(t *testing.T, srv *contractServer, in RecipeInput) Recipe {
 func TestCreateAndGetRecipe(t *testing.T) {
 	srv, _ := newTestServer(t)
 
-	res := srv.do(t, http.MethodPost, "/api/recipes", mustJSON(t, pancakes()))
+	res := srv.do(t, http.MethodPost, srv.book+"/recipes", mustJSON(t, pancakes()))
 
 	wantStatus(t, res, http.StatusCreated)
 	created := decode[Recipe](t, res)
-	if got, want := res.Header.Get("Location"), "/api/recipes/"+created.Id; got != want {
+	if got, want := res.Header.Get("Location"), srv.book+"/recipes/"+created.Id; got != want {
 		t.Errorf("Location = %q, want %q", got, want)
 	}
 	want := Recipe{
@@ -51,7 +51,7 @@ func TestCreateAndGetRecipe(t *testing.T) {
 	}
 	assertRecipe(t, created, want)
 
-	res = srv.do(t, http.MethodGet, "/api/recipes/"+created.Id, nil)
+	res = srv.do(t, http.MethodGet, srv.book+"/recipes/"+created.Id, nil)
 	wantStatus(t, res, http.StatusOK)
 	assertRecipe(t, decode[Recipe](t, res), want)
 }
@@ -109,7 +109,7 @@ func TestCreateRecipeRejectsInvalidInput(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			srv, _ := newTestServer(t)
 
-			res := srv.doInvalid(t, http.MethodPost, "/api/recipes", []byte(tt.body))
+			res := srv.doInvalid(t, http.MethodPost, srv.book+"/recipes", []byte(tt.body))
 
 			wantStatus(t, res, http.StatusBadRequest)
 		})
@@ -121,7 +121,7 @@ func TestCreateRecipeRejectsBlankName(t *testing.T) {
 	in := pancakes()
 	in.Name = "   " // valid per the spec's minLength, but blank once trimmed
 
-	res := srv.do(t, http.MethodPost, "/api/recipes", mustJSON(t, in))
+	res := srv.do(t, http.MethodPost, srv.book+"/recipes", mustJSON(t, in))
 
 	wantStatus(t, res, http.StatusBadRequest)
 }
@@ -134,7 +134,7 @@ func TestListRecipesSortedByName(t *testing.T) {
 		createRecipe(t, srv, in)
 	}
 
-	res := srv.do(t, http.MethodGet, "/api/recipes", nil)
+	res := srv.do(t, http.MethodGet, srv.book+"/recipes", nil)
 
 	wantStatus(t, res, http.StatusOK)
 	var names []string
@@ -149,7 +149,7 @@ func TestListRecipesSortedByName(t *testing.T) {
 func TestListRecipesEmpty(t *testing.T) {
 	srv, _ := newTestServer(t)
 
-	res := srv.do(t, http.MethodGet, "/api/recipes", nil)
+	res := srv.do(t, http.MethodGet, srv.book+"/recipes", nil)
 
 	wantStatus(t, res, http.StatusOK)
 	if items := decode[RecipeList](t, res).Items; items == nil || len(items) != 0 {
@@ -166,7 +166,7 @@ func TestUpdateRecipe(t *testing.T) {
 	in.Name = "Crêpes"
 	in.Tags = []string{"french"}
 	in.Source = nil
-	res := srv.do(t, http.MethodPut, "/api/recipes/"+created.Id, mustJSON(t, in))
+	res := srv.do(t, http.MethodPut, srv.book+"/recipes/"+created.Id, mustJSON(t, in))
 
 	wantStatus(t, res, http.StatusOK)
 	want := created
@@ -176,7 +176,7 @@ func TestUpdateRecipe(t *testing.T) {
 	want.UpdatedAt = testNow.Add(time.Hour)
 	assertRecipe(t, decode[Recipe](t, res), want)
 
-	res = srv.do(t, http.MethodGet, "/api/recipes/"+created.Id, nil)
+	res = srv.do(t, http.MethodGet, srv.book+"/recipes/"+created.Id, nil)
 	assertRecipe(t, decode[Recipe](t, res), want)
 }
 
@@ -184,10 +184,10 @@ func TestDeleteRecipe(t *testing.T) {
 	srv, _ := newTestServer(t)
 	created := createRecipe(t, srv, pancakes())
 
-	res := srv.do(t, http.MethodDelete, "/api/recipes/"+created.Id, nil)
+	res := srv.do(t, http.MethodDelete, srv.book+"/recipes/"+created.Id, nil)
 
 	wantStatus(t, res, http.StatusNoContent)
-	res = srv.do(t, http.MethodGet, "/api/recipes/"+created.Id, nil)
+	res = srv.do(t, http.MethodGet, srv.book+"/recipes/"+created.Id, nil)
 	wantStatus(t, res, http.StatusNotFound)
 }
 
@@ -202,7 +202,7 @@ func TestMissingRecipeReturns404(t *testing.T) {
 				b = body
 			}
 
-			res := srv.do(t, method, "/api/recipes/missing", b)
+			res := srv.do(t, method, srv.book+"/recipes/missing", b)
 
 			wantStatus(t, res, http.StatusNotFound)
 		})

@@ -29,9 +29,15 @@ const (
 	maxBodyBytes = 1 << 20
 )
 
+// Storage is what the API needs to persist: recipes and cookbooks.
+type Storage interface {
+	store.Store
+	store.Cookbooks
+}
+
 // server implements StrictServerInterface.
 type server struct {
-	store store.Store
+	store Storage
 	auth  *auth.Service
 	now   func() time.Time
 	newID func() string
@@ -52,7 +58,7 @@ type Options struct {
 }
 
 // NewServer returns the HTTP handler for the whole API, mounted under /api.
-func NewServer(st store.Store, a *auth.Service, opts Options) http.Handler {
+func NewServer(st Storage, a *auth.Service, opts Options) http.Handler {
 	return newHandler(&server{
 		store:           st,
 		auth:            a,
